@@ -66,7 +66,7 @@ export interface ConfigureOptions {
    */
   background?: boolean;
   /**
-   * Ignore silent mode, 
+   * Ignore silent mode,
    */
   ignoreSilent?: boolean;
 }
