@@ -143,7 +143,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             } else {
                 try self.session.setCategory(AVAudioSession.Category.playback, options: .mixWithOthers)
             }
-            
+
             // Only activate if needed (background mode)
             if background {
                 try self.session.setActive(true)
@@ -195,7 +195,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     return false
                 }
             }
-            
+
             // Only deactivate if no assets are playing
             if !hasPlayingAssets {
                 try self.session.setActive(false, options: .notifyOthersOnDeactivation)
@@ -210,7 +210,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         // Instead, check if all players are done
         audioQueue.async { [weak self] in
             guard let self = self else { return }
-            
+
             // Avoid recursive calls by checking if the asset is still in the list
             let hasPlayingAssets = self.audioList.values.contains { asset in
                 if let audioAsset = asset as? AudioAsset {
@@ -219,7 +219,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 }
                 return false
             }
-            
+
             // Only end the session if no more assets are playing
             if !hasPlayingAssets {
                 self.endSession()
@@ -478,11 +478,28 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             var basePath: String?
             if let url = URL(string: assetPath), url.scheme != nil {
-                // Handle remote URL
-                let remoteAudioAsset = RemoteAudioAsset(owner: self, withAssetId: audioId, withPath: assetPath, withChannels: channels, withVolume: volume, withFadeDelay: delay)
-                self.audioList[audioId] = remoteAudioAsset
-                call.resolve()
-                return
+                // Check if it's a local file URL or a remote URL
+                if url.isFileURL {
+                    // Handle local file URL
+                    let fileURL = url
+                    basePath = fileURL.path
+
+                    if let basePath = basePath, FileManager.default.fileExists(atPath: basePath) {
+                        let audioAsset = AudioAsset(
+                            owner: self,
+                            withAssetId: audioId, withPath: basePath, withChannels: channels,
+                            withVolume: volume, withFadeDelay: delay)
+                        self.audioList[audioId] = audioAsset
+                        call.resolve()
+                        return
+                    }
+                } else {
+                    // Handle remote URL
+                    let remoteAudioAsset = RemoteAudioAsset(owner: self, withAssetId: audioId, withPath: assetPath, withChannels: channels, withVolume: volume, withFadeDelay: delay)
+                    self.audioList[audioId] = remoteAudioAsset
+                    call.resolve()
+                    return
+                }
             } else if isLocalUrl == false {
                 // Handle public folder
                 assetPath = assetPath.starts(with: "public/") ? assetPath : "public/" + assetPath

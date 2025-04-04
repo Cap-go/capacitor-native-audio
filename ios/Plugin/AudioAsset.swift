@@ -67,7 +67,8 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         // Limit channels to a reasonable maximum to prevent resource issues
         let channelCount = min(max(channels ?? 1, 1), MAX_CHANNELS)
 
-        owner.executeOnAudioQueue { [self] in
+        owner.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
             for _ in 0..<channelCount {
                 do {
                     let player = try AVAudioPlayer(contentsOf: pathUrl)
@@ -88,10 +89,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     deinit {
         currentTimeTimer?.invalidate()
         currentTimeTimer = nil
-        
+
         fadeTimer?.invalidate()
         fadeTimer = nil
-        
+
         // Clean up any players that might still be playing
         for player in channels {
             if player.isPlaying {
@@ -107,7 +108,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
      */
     func getCurrentTime() -> TimeInterval {
         var result: TimeInterval = 0
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             if channels.isEmpty || playIndex >= channels.count {
                 result = 0
                 return
@@ -123,7 +126,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
      * - Parameter time: Time in seconds
      */
     func setCurrentTime(time: TimeInterval) {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             if channels.isEmpty || playIndex >= channels.count {
                 return
             }
@@ -140,7 +145,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
      */
     func getDuration() -> TimeInterval {
         var result: TimeInterval = 0
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             if channels.isEmpty || playIndex >= channels.count {
                 result = 0
                 return
@@ -161,7 +168,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         stopCurrentTimeUpdates()
         stopFadeTimer()
 
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             guard !channels.isEmpty else { return }
 
             // Reset play index if it's out of bounds
@@ -186,14 +195,16 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
             } else {
                 player.play()
             }
-            
+
             playIndex = (playIndex + 1) % channels.count
             startCurrentTimeUpdates()
         }
     }
 
     func playWithFade(time: TimeInterval) {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             guard !channels.isEmpty else { return }
 
             // Reset play index if it's out of bounds
@@ -234,36 +245,58 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
         player.volume = startVolume
 
-        fadeTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeInterval), repeats: true) { [weak self, weak player] timer in
-            guard let strongSelf = self, let strongPlayer = player else {
-                timer.invalidate()
-                return
+        // Create timer on main thread
+        DispatchQueue.main.async { [weak self, weak player] in
+            guard let self = self else { return }
+
+            let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeInterval), repeats: true) { [weak self, weak player] timer in
+                guard let strongSelf = self, let strongPlayer = player else {
+                    timer.invalidate()
+                    return
+                }
+
+                currentStep += 1
+                let progress = Float(currentStep) / Float(totalSteps)
+                let newVolume = startVolume + progress * (endVolume - startVolume)
+
+                // Update player on audio queue
+                strongSelf.owner?.executeOnAudioQueue {
+                    strongPlayer.volume = newVolume
+                }
+
+                if currentStep >= totalSteps {
+                    strongSelf.owner?.executeOnAudioQueue {
+                        strongPlayer.volume = endVolume
+                    }
+                    timer.invalidate()
+
+                    // Update timer reference on main thread
+                    DispatchQueue.main.async {
+                        strongSelf.fadeTimer = nil
+                    }
+                }
             }
 
-            currentStep += 1
-            let progress = Float(currentStep) / Float(totalSteps)
-            let newVolume = startVolume + progress * (endVolume - startVolume)
-
-            strongPlayer.volume = newVolume
-
-            if currentStep >= totalSteps {
-                strongPlayer.volume = endVolume
-                timer.invalidate()
-                strongSelf.fadeTimer = nil
-            }
+            self.fadeTimer = timer
+            RunLoop.current.add(timer, forMode: .common)
         }
-        RunLoop.current.add(fadeTimer!, forMode: .common)
     }
 
     internal func stopFadeTimer() {
         DispatchQueue.main.async { [weak self] in
-            self?.fadeTimer?.invalidate()
-            self?.fadeTimer = nil
+            guard let self = self else { return }
+
+            if let timer = self.fadeTimer {
+                timer.invalidate()
+                self.fadeTimer = nil
+            }
         }
     }
 
     func pause() {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             stopCurrentTimeUpdates()
 
             // Check for valid playIndex
@@ -275,7 +308,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     }
 
     func resume() {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             // Check for valid playIndex
             guard !channels.isEmpty && playIndex < channels.count else { return }
 
@@ -287,7 +322,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     }
 
     func stop() {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             stopCurrentTimeUpdates()
             stopFadeTimer()
 
@@ -304,7 +341,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     func stopWithFade() {
         // Store current player locally to avoid race conditions with playIndex
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             guard !channels.isEmpty && playIndex < channels.count else {
                 stop()
                 return
@@ -329,7 +368,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     }
 
     func loop() {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             self.stop()
 
             guard !channels.isEmpty && playIndex < channels.count else { return }
@@ -344,7 +385,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     }
 
     func unload() {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             self.stop()
             stopCurrentTimeUpdates()
             stopFadeTimer()
@@ -357,7 +400,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
      * - Parameter volume: Volume level (0.0-1.0)
      */
     func setVolume(volume: NSNumber!) {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             // Ensure volume is in valid range
             let validVolume = min(max(volume.floatValue, Constant.MinVolume), Constant.MaxVolume)
             for player in channels {
@@ -371,7 +416,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
      * - Parameter rate: Playback rate (0.5-2.0 is typical range)
      */
     func setRate(rate: NSNumber!) {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             // Ensure rate is in valid range
             let validRate = min(max(rate.floatValue, Constant.MinRate), Constant.MaxRate)
             for player in channels {
@@ -384,11 +431,13 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
      * AVAudioPlayerDelegate method called when playback finishes
      */
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             self.owner?.notifyListeners("complete", data: [
                 "assetId": self.assetId
             ])
-            
+
             // Notify the owner that this player finished
             // The owner will check if any other assets are still playing
             owner?.audioPlayerDidFinishPlaying(player, successfully: flag)
@@ -403,7 +452,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     func isPlaying() -> Bool {
         var result: Bool = false
-        owner?.executeOnAudioQueue { [self] in
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self = self else { return }
+
             if channels.isEmpty || playIndex >= channels.count {
                 result = false
                 return
@@ -440,8 +491,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     internal func stopCurrentTimeUpdates() {
         DispatchQueue.main.async { [weak self] in
-            self?.currentTimeTimer?.invalidate()
-            self?.currentTimeTimer = nil
+            guard let self = self else { return }
+
+            self.currentTimeTimer?.invalidate()
+            self.currentTimeTimer = nil
         }
     }
 }
