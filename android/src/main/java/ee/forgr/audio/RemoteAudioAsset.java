@@ -18,31 +18,26 @@ import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @UnstableApi
 public class RemoteAudioAsset extends AudioAsset {
 
     private static final String TAG = "RemoteAudioAsset";
     private final ArrayList<ExoPlayer> players;
-    private int playIndex = 0;
     private final Uri uri;
     private float volume;
     private boolean isPrepared = false;
     private static SimpleCache cache;
     private static final long MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB cache
-    protected AudioCompletionListener completionListener;
-    private static final float FADE_STEP = 0.05f;
-    private static final int FADE_DELAY_MS = 80; // 80ms between steps
-    private float initialVolume;
-    private Handler currentTimeHandler;
-    private Runnable currentTimeRunnable;
 
     public RemoteAudioAsset(NativeAudio owner, String assetId, Uri uri, int audioChannelNum, float volume) throws Exception {
         super(owner, assetId, null, 0, volume);
         this.uri = uri;
         this.volume = volume;
-        this.initialVolume = volume;
         this.players = new ArrayList<>();
+        this.fadeExecutor = Executors.newSingleThreadScheduledExecutor();
 
         if (audioChannelNum < 1) {
             audioChannelNum = 1;
@@ -154,7 +149,7 @@ public class RemoteAudioAsset extends AudioAsset {
     }
 
     @Override
-    public void play(Double time) throws Exception {
+    public void play(double time, float volume) throws Exception {
         if (players.isEmpty()) {
             throw new Exception("No ExoPlayer available");
         }
@@ -174,7 +169,7 @@ public class RemoteAudioAsset extends AudioAsset {
                                         if (playbackState == Player.STATE_READY) {
                                             isPrepared = true;
                                             try {
-                                                playInternal(player, time);
+                                                playInternal(player, time, volume);
                                                 startCurrentTimeUpdates();
                                             } catch (Exception e) {
                                                 Log.e(TAG, "Error playing after prepare", e);
@@ -188,7 +183,7 @@ public class RemoteAudioAsset extends AudioAsset {
                             );
                         } else {
                             try {
-                                playInternal(player, time);
+                                playInternal(player, time, volume);
                                 startCurrentTimeUpdates();
                             } catch (Exception e) {
                                 Log.e(TAG, "Error playing", e);
@@ -201,15 +196,18 @@ public class RemoteAudioAsset extends AudioAsset {
         playIndex = (playIndex + 1) % players.size();
     }
 
-    private void playInternal(final ExoPlayer player, final Double time) throws Exception {
+    private void playInternal(final ExoPlayer player, final double time, final float volume) throws Exception {
         owner
             .getActivity()
             .runOnUiThread(
                 new Runnable() {
                     @Override
                     public void run() {
-                        if (time != null) {
+                        if (time != 0) {
                             player.seekTo(Math.round(time * 1000));
+                        }
+                        if (volume != 0) {
+                            player.setVolume(volume);
                         }
                         player.play();
                     }
@@ -226,9 +224,11 @@ public class RemoteAudioAsset extends AudioAsset {
                 new Runnable() {
                     @Override
                     public void run() {
+                        cancelFade();
                         for (ExoPlayer player : players) {
-                            if (player.isPlaying()) {
+                            if (player != null && player.isPlaying()) {
                                 player.pause();
+                                stopCurrentTimeUpdates();
                                 wasPlaying[0] = true;
                             }
                         }
@@ -247,7 +247,7 @@ public class RemoteAudioAsset extends AudioAsset {
                     @Override
                     public void run() {
                         for (ExoPlayer player : players) {
-                            if (!player.isPlaying()) {
+                            if (player != null && !player.isPlaying()) {
                                 player.play();
                             }
                         }
@@ -265,9 +265,11 @@ public class RemoteAudioAsset extends AudioAsset {
                 new Runnable() {
                     @Override
                     public void run() {
+                        cancelFade();
                         for (ExoPlayer player : players) {
-                            if (player.isPlaying()) {
+                            if (player != null && player.isPlaying()) {
                                 player.stop();
+                                dispatchComplete();
                             }
                             // Reset the ExoPlayer to make it ready for future playback
                             initializePlayer(player);
@@ -300,14 +302,16 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     public void unload() throws Exception {
+        cancelFade();
         for (ExoPlayer player : players) {
             player.release();
         }
         players.clear();
+        fadeExecutor.shutdown();
     }
 
     @Override
-    public void setVolume(final float volume) throws Exception {
+    public void setVolume(final float volume, final double duration) throws Exception {
         this.volume = volume;
         owner
             .getActivity()
@@ -315,8 +319,14 @@ public class RemoteAudioAsset extends AudioAsset {
                 new Runnable() {
                     @Override
                     public void run() {
+                        cancelFade();
                         for (ExoPlayer player : players) {
-                            player.setVolume(volume);
+                            if (player == null) continue;
+                            if (player.isPlaying() && duration > 0) {
+                                fadeTo(player, (float) duration, volume);
+                            } else {
+                                player.setVolume(volume);
+                            }
                         }
                     }
                 }
@@ -454,17 +464,7 @@ public class RemoteAudioAsset extends AudioAsset {
         return dir.delete();
     }
 
-    public void setCompletionListener(AudioCompletionListener listener) {
-        this.completionListener = listener;
-    }
-
-    protected void notifyCompletion() {
-        if (completionListener != null) {
-            completionListener.onCompletion(getAssetId());
-        }
-    }
-
-    public void playWithFade(Double time) throws Exception {
+    public void playWithFadeIn(double time, float volume, float fadeInDurationMs) throws Exception {
         if (players.isEmpty()) {
             throw new Exception("No ExoPlayer available");
         }
@@ -476,38 +476,78 @@ public class RemoteAudioAsset extends AudioAsset {
                 new Runnable() {
                     @Override
                     public void run() {
-                        if (!player.isPlaying()) {
-                            if (time != null) {
+                        if (player != null && !player.isPlaying()) {
+                            if (time != 0) {
                                 player.seekTo(Math.round(time * 1000));
                             }
                             player.setVolume(0);
                             player.play();
                             startCurrentTimeUpdates();
-                            fadeIn(player);
+                            fadeIn(player, fadeInDurationMs, volume);
                         }
                     }
                 }
             );
     }
 
-    private void fadeIn(final ExoPlayer player) {
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final Runnable fadeRunnable = new Runnable() {
-            float currentVolume = 0;
+    private void fadeIn(final ExoPlayer player, float fadeInDurationMs, float volume) {
+        cancelFade();
+        fadeState = FadeState.FADE_IN;
 
-            @Override
-            public void run() {
-                if (currentVolume < initialVolume) {
-                    currentVolume += FADE_STEP;
-                    player.setVolume(currentVolume);
-                    handler.postDelayed(this, FADE_DELAY_MS);
+        final float targetVolume = volume;
+        final int steps = Math.max(1, (int) (fadeInDurationMs / FADE_DELAY_MS));
+        final float fadeStep = targetVolume / steps;
+
+        Log.d(
+            TAG,
+            "Beginning fade in at time " +
+            getCurrentPosition() +
+            " over " +
+            (fadeInDurationMs / 1000.0) +
+            "s to target volume " +
+            targetVolume +
+            " in " +
+            steps +
+            " steps (step duration: " +
+            (FADE_DELAY_MS / 1000.0) +
+            "s"
+        );
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(
+            new Runnable() {
+                float currentVolume = 0;
+
+                @Override
+                public void run() {
+                    if (fadeState != FadeState.FADE_IN || currentVolume >= targetVolume) {
+                        fadeState = FadeState.NONE;
+                        cancelFade();
+                        Log.d(TAG, "Fade in complete at time " + getCurrentPosition());
+                        return;
+                    }
+                    final float previousCurrentVolume = currentVolume;
+                    currentVolume += fadeStep;
+                    final float resolvedTargetVolume = Math.min(currentVolume, targetVolume);
+                    Log.v(
+                        TAG,
+                        "Fade in step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + resolvedTargetVolume
+                    );
+                    owner
+                        .getActivity()
+                        .runOnUiThread(() -> {
+                            if (player != null && player.isPlaying()) {
+                                player.setVolume(currentVolume);
+                            }
+                        });
                 }
-            }
-        };
-        handler.post(fadeRunnable);
+            },
+            0,
+            FADE_DELAY_MS,
+            TimeUnit.MILLISECONDS
+        );
     }
 
-    public void stopWithFade() throws Exception {
+    public void stopWithFade(float fadeOutDurationMs) throws Exception {
         if (players.isEmpty()) {
             return;
         }
@@ -515,44 +555,158 @@ public class RemoteAudioAsset extends AudioAsset {
         final ExoPlayer player = players.get(playIndex);
         owner
             .getActivity()
-            .runOnUiThread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        if (player.isPlaying()) {
-                            fadeOut(player);
-                        }
-                    }
+            .runOnUiThread(() -> {
+                if (player != null && player.isPlaying()) {
+                    fadeOut(player, fadeOutDurationMs);
                 }
-            );
+            });
     }
 
-    private void fadeOut(final ExoPlayer player) {
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final Runnable fadeRunnable = new Runnable() {
-            float currentVolume = player.getVolume();
+    private void fadeOut(final ExoPlayer player, float fadeOutDurationMs) {
+        cancelFade();
+        fadeState = FadeState.FADE_OUT;
 
-            @Override
-            public void run() {
-                if (currentVolume > FADE_STEP) {
-                    currentVolume -= FADE_STEP;
-                    player.setVolume(currentVolume);
-                    handler.postDelayed(this, FADE_DELAY_MS);
-                } else {
-                    player.setVolume(0);
-                    player.stop();
+        final int steps = Math.max(1, (int) (fadeOutDurationMs / FADE_DELAY_MS));
+        final float initialVolume = player.getVolume();
+        final float fadeStep = initialVolume / steps;
+
+        Log.d(
+            TAG,
+            "Beginning fade out from volume " +
+            initialVolume +
+            " at time " +
+            getCurrentPosition() +
+            " over " +
+            (fadeOutDurationMs / 1000.0) +
+            "s in " +
+            steps +
+            " steps (step duration: " +
+            (FADE_DELAY_MS / 1000.0) +
+            "s)"
+        );
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(
+            new Runnable() {
+                float currentVolume = initialVolume;
+
+                @Override
+                public void run() {
+                    if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
+                        fadeState = FadeState.NONE;
+                        owner
+                            .getActivity()
+                            .runOnUiThread(() -> {
+                                if (player != null && player.isPlaying()) {
+                                    player.setVolume(0);
+                                    player.stop();
+                                }
+                            });
+                        cancelFade();
+                        Log.v(TAG, "Fade out complete at time " + getCurrentPosition());
+                        return;
+                    }
+                    final float previousCurrentVolume = currentVolume;
+                    currentVolume -= fadeStep;
+                    final float thisTargetVolume = Math.max(currentVolume, 0);
+                    Log.d(TAG, "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume);
+                    owner
+                        .getActivity()
+                        .runOnUiThread(() -> {
+                            if (player != null && player.isPlaying()) {
+                                player.setVolume(thisTargetVolume);
+                            }
+                        });
                 }
-            }
-        };
-        handler.post(fadeRunnable);
+            },
+            0,
+            FADE_DELAY_MS,
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    private void fadeTo(final ExoPlayer player, float fadeDurationMs, float targetVolume) {
+        cancelFade();
+        fadeState = FadeState.FADE_TO;
+
+        final int steps = Math.max(1, (int) (fadeDurationMs / FADE_DELAY_MS));
+        final float minVolume = zeroVolume;
+        final float maxVol = maxVolume;
+        final float initialVolume = Math.max(player.getVolume(), minVolume);
+        final float finalTargetVolume = Math.max(targetVolume, minVolume);
+
+        // Calculate exponential ratio for perceptual fade
+        final float safeInitialVolume = Math.max(initialVolume, zeroVolume);
+        final double ratio = Math.pow(finalTargetVolume / safeInitialVolume, 1.0 / steps);
+
+        Log.d(
+            TAG,
+            "Beginning exponential fade from volume " +
+            initialVolume +
+            " to " +
+            finalTargetVolume +
+            " over " +
+            (fadeDurationMs / 1000.0) +
+            "s in " +
+            steps +
+            " steps (step duration: " +
+            (FADE_DELAY_MS / 1000.0) +
+            "s)"
+        );
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(
+            new Runnable() {
+                int currentStep = 0;
+                float currentVolume = initialVolume;
+
+                @Override
+                public void run() {
+                    if (fadeState != FadeState.FADE_TO || player == null || !player.isPlaying() || currentStep >= steps) {
+                        fadeState = FadeState.NONE;
+                        cancelFade();
+                        Log.d(TAG, "Fade to complete at time " + getCurrentPosition());
+                        return;
+                    }
+                    try {
+                        currentVolume *= (float) ratio;
+                        // Clamp volume between minVolume and maxVolume
+                        currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVol);
+                        Log.v(TAG, "Fade to step " + currentStep + ": volume set to " + currentVolume);
+                        owner
+                            .getActivity()
+                            .runOnUiThread(() -> {
+                                if (player != null && player.isPlaying()) {
+                                    player.setVolume(currentVolume);
+                                }
+                            });
+                        currentStep++;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error during fade to", e);
+                        cancelFade();
+                    }
+                }
+            },
+            0,
+            FADE_DELAY_MS,
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    private void cancelFade() {
+        if (fadeTask != null && !fadeTask.isCancelled()) {
+            fadeTask.cancel(true);
+        }
+        fadeState = FadeState.NONE;
+        fadeTask = null;
     }
 
     @Override
     protected void startCurrentTimeUpdates() {
-        Log.d(TAG, "Starting timer updates in RemoteAudioAsset");
+        Log.d(TAG, "Starting timer updates");
         if (currentTimeHandler == null) {
             currentTimeHandler = new Handler(Looper.getMainLooper());
         }
+        // Reset completion status for this assetId
+        dispatchedCompleteMap.put(assetId, false);
 
         // Wait for player to be truly ready
         currentTimeHandler.postDelayed(
@@ -581,16 +735,17 @@ public class RemoteAudioAsset extends AudioAsset {
                 try {
                     if (!players.isEmpty()) {
                         ExoPlayer player = players.get(playIndex);
-                        if (player.getPlaybackState() == Player.STATE_READY && player.isPlaying()) {
+                        if (player != null && player.getPlaybackState() == Player.STATE_READY && player.isPlaying()) {
                             double currentTime = player.getCurrentPosition() / 1000.0; // Get time directly
-                            Log.d(TAG, "Timer update: currentTime = " + currentTime);
+                            Log.d(TAG, "Play timer update: currentTime = " + currentTime);
                             owner.notifyCurrentTime(assetId, currentTime);
                             currentTimeHandler.postDelayed(this, 100);
                             return;
                         }
                     }
-                    Log.d(TAG, "Stopping timer - not playing or not ready");
+                    Log.d(TAG, "Stopping play timer - not playing or not ready");
                     stopCurrentTimeUpdates();
+                    dispatchComplete();
                 } catch (Exception e) {
                     Log.e(TAG, "Error getting current time", e);
                     stopCurrentTimeUpdates();
@@ -598,14 +753,5 @@ public class RemoteAudioAsset extends AudioAsset {
             }
         };
         currentTimeHandler.post(currentTimeRunnable);
-    }
-
-    @Override
-    void stopCurrentTimeUpdates() {
-        Log.d(TAG, "Stopping timer updates in RemoteAudioAsset");
-        if (currentTimeHandler != null) {
-            currentTimeHandler.removeCallbacks(currentTimeRunnable);
-            currentTimeHandler = null;
-        }
     }
 }

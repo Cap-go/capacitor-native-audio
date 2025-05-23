@@ -6,29 +6,54 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.RequiresApi;
+import androidx.media3.common.util.UnstableApi;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
+@UnstableApi
 public class AudioAsset {
+
+    public static final double DEFAULT_FADE_DURATION_MS = 1000.0;
 
     private final String TAG = "AudioAsset";
 
     private final ArrayList<AudioDispatcher> audioList;
-    private int playIndex = 0;
+    protected int playIndex = 0;
     protected final NativeAudio owner;
     protected AudioCompletionListener completionListener;
     protected String assetId;
-    private Handler currentTimeHandler;
-    private Runnable currentTimeRunnable;
-    private static final float FADE_STEP = 0.05f;
-    private static final int FADE_DELAY_MS = 80;
-    private float initialVolume;
+    protected Handler currentTimeHandler;
+    protected Runnable currentTimeRunnable;
+    protected static final int FADE_DELAY_MS = 80; // Delay between fade steps in milliseconds
+
+    protected ScheduledExecutorService fadeExecutor;
+    protected ScheduledFuture<?> fadeTask;
+
+    protected Map<String, Boolean> dispatchedCompleteMap = new HashMap<>();
+
+    protected enum FadeState {
+        NONE,
+        FADE_IN,
+        FADE_OUT,
+        FADE_TO
+    }
+
+    protected FadeState fadeState = FadeState.NONE;
+
+    protected final float zeroVolume = 0.001f; // Minimum volume to avoid zero for exponential fade
+    protected final float maxVolume = 1.0f; // Maximum volume
 
     AudioAsset(NativeAudio owner, String assetId, AssetFileDescriptor assetFileDescriptor, int audioChannelNum, float volume)
         throws Exception {
         audioList = new ArrayList<>();
         this.owner = owner;
         this.assetId = assetId;
-        this.initialVolume = volume;
+        this.fadeExecutor = Executors.newSingleThreadScheduledExecutor();
 
         if (audioChannelNum < 0) {
             audioChannelNum = 1;
@@ -42,13 +67,19 @@ public class AudioAsset {
     }
 
     public void dispatchComplete() {
+        if (dispatchedCompleteMap.getOrDefault(this.assetId, false)) {
+            return;
+        }
         this.owner.dispatchComplete(this.assetId);
+        dispatchedCompleteMap.put(this.assetId, true);
     }
 
-    public void play(Double time) throws Exception {
+    public void play(double time, float volume) throws Exception {
         AudioDispatcher audio = audioList.get(playIndex);
         if (audio != null) {
+            cancelFade();
             audio.play(time);
+            audio.setVolume(volume);
             playIndex++;
             playIndex = playIndex % audioList.size();
             Log.d(TAG, "Starting timer from play"); // Debug log
@@ -96,6 +127,10 @@ public class AudioAsset {
 
         for (int x = 0; x < audioList.size(); x++) {
             AudioDispatcher audio = audioList.get(x);
+            if (audio == null) {
+                continue;
+            }
+            cancelFade();
             wasPlaying |= audio.pause();
         }
 
@@ -117,10 +152,12 @@ public class AudioAsset {
 
     public void stop() throws Exception {
         stopCurrentTimeUpdates(); // Stop updates when stopping
+        dispatchComplete();
         for (int x = 0; x < audioList.size(); x++) {
             AudioDispatcher audio = audioList.get(x);
 
             if (audio != null) {
+                cancelFade();
                 audio.stop();
             } else {
                 throw new Exception("AudioDispatcher is null");
@@ -154,14 +191,20 @@ public class AudioAsset {
         }
 
         audioList.clear();
+        fadeExecutor.shutdown();
     }
 
-    public void setVolume(float volume) throws Exception {
+    public void setVolume(float volume, double duration) throws Exception {
         for (int x = 0; x < audioList.size(); x++) {
             AudioDispatcher audio = audioList.get(x);
 
+            cancelFade();
             if (audio != null) {
-                audio.setVolume(volume);
+                if (isPlaying() && duration > 0) {
+                    fadeTo(audio, duration, volume);
+                } else {
+                    audio.setVolume(volume);
+                }
             } else {
                 throw new Exception("AudioDispatcher is null");
             }
@@ -179,9 +222,10 @@ public class AudioAsset {
     }
 
     public boolean isPlaying() throws Exception {
-        if (audioList.size() != 1) return false;
-
-        return audioList.get(playIndex).isPlaying();
+        for (AudioDispatcher ad : audioList) {
+            if (ad.isPlaying()) return true;
+        }
+        return false;
     }
 
     public void setCompletionListener(AudioCompletionListener listener) {
@@ -218,10 +262,12 @@ public class AudioAsset {
     }
 
     protected void startCurrentTimeUpdates() {
-        Log.d(TAG, "Starting timer updates in AudioAsset");
+        Log.d(TAG, "Starting timer updates");
         if (currentTimeHandler == null) {
             currentTimeHandler = new Handler(Looper.getMainLooper());
         }
+        // Reset completion status for this assetId
+        dispatchedCompleteMap.put(assetId, false);
 
         // Add small delay to let audio start playing
         currentTimeHandler.postDelayed(
@@ -239,16 +285,27 @@ public class AudioAsset {
         currentTimeRunnable = new Runnable() {
             @Override
             public void run() {
+                AudioDispatcher audio = null;
                 try {
-                    AudioDispatcher audio = audioList.get(playIndex);
+                    audio = audioList.get(playIndex);
+                } catch (Exception e) {
+                    Log.v(TAG, "Audio dispatcher does not exist at index " + playIndex);
+                }
+                if (audio == null) {
+                    Log.d(TAG, "Audio dispatcher does not exist - aborting timer update");
+                    return;
+                }
+
+                try {
                     if (audio != null && audio.isPlaying()) {
                         double currentTime = getCurrentPosition();
-                        Log.d(TAG, "Timer update: currentTime = " + currentTime);
+                        Log.v(TAG, "Play timer update: currentTime = " + currentTime);
                         owner.notifyCurrentTime(assetId, currentTime);
                         currentTimeHandler.postDelayed(this, 100);
                     } else {
-                        Log.d(TAG, "Stopping timer - not playing");
+                        Log.d(TAG, "Stopping play timer - not playing");
                         stopCurrentTimeUpdates();
+                        dispatchComplete();
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error getting current time", e);
@@ -260,75 +317,228 @@ public class AudioAsset {
     }
 
     void stopCurrentTimeUpdates() {
-        Log.d(TAG, "Stopping timer updates in AudioAsset");
+        Log.d(TAG, "Stopping play timer updates");
         if (currentTimeHandler != null && currentTimeRunnable != null) {
             currentTimeHandler.removeCallbacks(currentTimeRunnable);
+            currentTimeHandler = null;
+            currentTimeRunnable = null;
         }
     }
 
-    public void playWithFade(Double time) throws Exception {
+    public void playWithFadeIn(double time, float volume, double fadeInDurationMs) throws Exception {
         AudioDispatcher audio = audioList.get(playIndex);
         if (audio != null) {
             audio.setVolume(0);
             audio.play(time);
-            fadeIn(audio);
+            fadeIn(audio, fadeInDurationMs, volume);
             startCurrentTimeUpdates();
         }
     }
 
-    private void fadeIn(final AudioDispatcher audio) {
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final Runnable fadeRunnable = new Runnable() {
-            float currentVolume = 0;
+    private void fadeIn(final AudioDispatcher audio, double fadeInDurationMs, float targetVolume) {
+        cancelFade();
+        fadeState = FadeState.FADE_IN;
 
-            @Override
-            public void run() {
-                if (currentVolume < initialVolume) {
-                    currentVolume += FADE_STEP;
+        final int steps = Math.max(1, (int) (fadeInDurationMs / FADE_DELAY_MS));
+        final float fadeStep = targetVolume / steps;
+
+        Log.d(
+            TAG,
+            "Beginning fade in at time " +
+            getCurrentPosition() +
+            " over " +
+            (fadeInDurationMs / 1000.0) +
+            "s to target volume " +
+            targetVolume +
+            " in " +
+            steps +
+            " steps (step duration: " +
+            (FADE_DELAY_MS / 1000.0) +
+            "s"
+        );
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(
+            new Runnable() {
+                float currentVolume = 0;
+
+                @Override
+                public void run() {
+                    if (fadeState != FadeState.FADE_IN || currentVolume >= targetVolume) {
+                        fadeState = FadeState.NONE;
+                        cancelFade();
+                        Log.d(TAG, "Fade in complete at time " + getCurrentPosition());
+                        return;
+                    }
+                    final float previousCurrentVolume = currentVolume;
+                    currentVolume += fadeStep;
                     try {
-                        audio.setVolume(currentVolume);
-                        handler.postDelayed(this, FADE_DELAY_MS);
+                        final float resolvedTargetVolume = Math.min(Math.max(currentVolume, 0), targetVolume);
+                        Log.v(
+                            TAG,
+                            "Fade in step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + resolvedTargetVolume
+                        );
+                        if (audio != null) audio.setVolume(resolvedTargetVolume);
                     } catch (Exception e) {
                         Log.e(TAG, "Error during fade in", e);
+                        cancelFade();
                     }
                 }
-            }
-        };
-        handler.post(fadeRunnable);
+            },
+            0,
+            FADE_DELAY_MS,
+            TimeUnit.MILLISECONDS
+        );
     }
 
-    public void stopWithFade() throws Exception {
+    public void stopWithFade(double fadeOutDurationMs) throws Exception {
         AudioDispatcher audio = audioList.get(playIndex);
         if (audio != null && audio.isPlaying()) {
-            fadeOut(audio);
+            cancelFade();
+            fadeOut(audio, fadeOutDurationMs);
         }
     }
 
-    private void fadeOut(final AudioDispatcher audio) {
-        final Handler handler = new Handler(Looper.getMainLooper());
-        final Runnable fadeRunnable = new Runnable() {
-            float currentVolume = initialVolume;
+    private void fadeOut(final AudioDispatcher audio, double fadeOutDurationMs) {
+        cancelFade();
+        fadeState = FadeState.FADE_OUT;
 
-            @Override
-            public void run() {
-                if (currentVolume > FADE_STEP) {
-                    currentVolume -= FADE_STEP;
+        if (audio == null) return;
+
+        final int steps = Math.max(1, (int) (fadeOutDurationMs / FADE_DELAY_MS));
+        final float initialVolume = audio.getVolume();
+        final float fadeStep = initialVolume / steps;
+
+        Log.d(
+            TAG,
+            "Beginning fade out from volume " +
+            initialVolume +
+            " at time " +
+            getCurrentPosition() +
+            " over " +
+            (fadeOutDurationMs / 1000.0) +
+            "s in " +
+            steps +
+            " steps (step duration: " +
+            (FADE_DELAY_MS / 1000.0) +
+            "s)"
+        );
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(
+            new Runnable() {
+                float currentVolume = initialVolume;
+
+                @Override
+                public void run() {
+                    if (fadeState != FadeState.FADE_OUT || currentVolume <= 0) {
+                        fadeState = FadeState.NONE;
+                        stopAudio(audio);
+                        cancelFade();
+                        Log.d(TAG, "Fade out complete at time " + getCurrentPosition());
+                        return;
+                    }
+                    final float previousCurrentVolume = currentVolume;
+                    currentVolume -= fadeStep;
                     try {
-                        audio.setVolume(currentVolume);
-                        handler.postDelayed(this, FADE_DELAY_MS);
+                        final float thisTargetVolume = Math.max(currentVolume, 0);
+                        Log.v(
+                            TAG,
+                            "Fade out step: from " + previousCurrentVolume + " to " + currentVolume + " to target " + thisTargetVolume
+                        );
+                        if (audio != null) audio.setVolume(thisTargetVolume);
                     } catch (Exception e) {
                         Log.e(TAG, "Error during fade out", e);
-                    }
-                } else {
-                    try {
-                        audio.setVolume(0);
-                        stop();
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error stopping after fade", e);
+                        cancelFade();
                     }
                 }
+            },
+            0,
+            FADE_DELAY_MS,
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    private void fadeTo(final AudioDispatcher audio, double fadeDurationMs, float targetVolume) {
+        cancelFade();
+        fadeState = FadeState.FADE_TO;
+
+        if (audio == null) return;
+
+        final int steps = Math.max(1, (int) (fadeDurationMs / FADE_DELAY_MS));
+        final float minVolume = zeroVolume;
+        final float initialVolume = Math.max(audio.getVolume(), minVolume);
+        final float finalTargetVolume = Math.max(targetVolume, minVolume);
+
+        // Calculate exponential ratio for perceptual fade
+        final float safeInitialVolume = Math.max(initialVolume, zeroVolume);
+        final double ratio = Math.pow(finalTargetVolume / safeInitialVolume, 1.0 / steps);
+
+        Log.d(
+            TAG,
+            "Beginning exponential fade from volume " +
+            initialVolume +
+            " to " +
+            finalTargetVolume +
+            " over " +
+            (fadeDurationMs / 1000.0) +
+            "s in " +
+            steps +
+            " steps (step duration: " +
+            (FADE_DELAY_MS / 1000.0) +
+            "s)"
+        );
+
+        fadeTask = fadeExecutor.scheduleWithFixedDelay(
+            new Runnable() {
+                int currentStep = 0;
+                float currentVolume = initialVolume;
+
+                @Override
+                public void run() {
+                    if ((audio != null && fadeState != FadeState.FADE_TO) || !audio.isPlaying() || currentStep >= steps) {
+                        fadeState = FadeState.NONE;
+                        cancelFade();
+                        Log.d(TAG, "Fade to complete at time " + getCurrentPosition());
+                        return;
+                    }
+
+                    try {
+                        currentVolume *= (float) ratio;
+                        currentVolume = Math.min(Math.max(currentVolume, minVolume), maxVolume); // Clamp between minVolume and maxVolume
+                        if (audio != null) audio.setVolume(currentVolume);
+                        Log.v(TAG, "Fade to step " + currentStep + ": volume set to " + currentVolume);
+                        currentStep++;
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error during fade to", e);
+                        cancelFade();
+                    }
+                }
+            },
+            0,
+            FADE_DELAY_MS,
+            TimeUnit.MILLISECONDS
+        );
+    }
+
+    /**
+     * Cancels the fade task if it is running.
+     */
+    private void cancelFade() {
+        if (fadeTask != null && !fadeTask.isCancelled()) {
+            fadeTask.cancel(true);
+        }
+        fadeState = FadeState.NONE;
+        fadeTask = null;
+    }
+
+    private void stopAudio(final AudioDispatcher audio) {
+        if (audio != null) {
+            try {
+                audio.setVolume(0);
+                stop();
+                cancelFade();
+            } catch (Exception e) {
+                Log.e(TAG, "Error stopping after fade", e);
             }
-        };
-        handler.post(fadeRunnable);
+        }
     }
 }

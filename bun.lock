@@ -11,7 +11,6 @@
         "@capacitor/ios": "^7.0.0",
         "@ionic/eslint-config": "^0.4.0",
         "@ionic/prettier-config": "^4.0.0",
-        "@ionic/swiftlint-config": "^2.0.0",
         "@types/node": "^22.13.1",
         "eslint": "^8.57.0",
         "eslint-plugin-import": "^2.31.0",
@@ -72,8 +71,6 @@
     "@ionic/eslint-config": ["@ionic/eslint-config@0.4.0", "", { "dependencies": { "@typescript-eslint/eslint-plugin": "^5.58.0", "@typescript-eslint/parser": "^5.58.0", "eslint-config-prettier": "^8.8.0", "eslint-plugin-import": "^2.27.0" }, "peerDependencies": { "eslint": ">=7" } }, "sha512-L8OXY29D3iGqNtteFj0iz3eoZIVgokBiVjCO8WMssNZa4GTHjYsase0rC9ASXGefMnLJu6rbNl3Gbx7NNxJRZQ=="],
 
     "@ionic/prettier-config": ["@ionic/prettier-config@4.0.0", "", { "peerDependencies": { "prettier": "^2.4.0 || ^3.0.0" } }, "sha512-0DqL6CggVdgeJAWOLPUT73rF1VD5p0tVlCpC5GXz5vTIUBxNwsJ5085Q7wXjKiE5Odx3aOHGTcuRWCawFsLFag=="],
-
-    "@ionic/swiftlint-config": ["@ionic/swiftlint-config@2.0.0", "", {}, "sha512-TXy76ALSKhUZzBziHz7aoEtSQwHofBIDRNzM9x4sndtC7fefbZsBw3UgGwXFTOc7hoj72EAGyqZNUhj9LlhaNQ=="],
 
     "@ionic/utils-array": ["@ionic/utils-array@2.1.6", "", { "dependencies": { "debug": "^4.0.0", "tslib": "^2.0.1" } }, "sha512-0JZ1Zkp3wURnv8oq6Qt7fMPo5MpjbLoUoa9Bu2Q4PJuSDWM8H8gwF3dQO7VTeUj3/0o1IB1wGkFWZZYgUXZMUg=="],
 
