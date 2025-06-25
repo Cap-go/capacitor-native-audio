@@ -1,0 +1,24 @@
+{
+  "configurations" : [
+    {
+      "id" : "9289F060-15EB-4604-BA37-86B596A44EC2",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:Plugin.xcodeproj",
+        "identifier" : "50ADFF90201F53D600D50D53",
+        "name" : "PluginTests"
+      }
+    }
+  ],
+  "version" : 1
+}
