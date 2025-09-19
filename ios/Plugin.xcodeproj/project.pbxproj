@@ -14,10 +14,11 @@
 		50ADFFA42020D75100D50D53 /* Capacitor.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 50ADFFA52020D75100D50D53 /* Capacitor.framework */; };
 		50E1A94820377CB70090CE1A /* Plugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50E1A94720377CB70090CE1A /* Plugin.swift */; };
 		861727C12B575FEA00390D67 /* RemoteAudioAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 861727C02B575FEA00390D67 /* RemoteAudioAsset.swift */; };
+		DB9D93FA2E0920CB008D2725 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9D93F92E0920CB008D2725 /* Logger.swift */; };
+		DB9D93FB2E0920CB008D2725 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB9D93F92E0920CB008D2725 /* Logger.swift */; };
 		E6ADD0FC24809E740011E340 /* Constant.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6ADD0FB24809E740011E340 /* Constant.swift */; };
 		E6ADD0FD24809E740011E340 /* Constant.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6ADD0FB24809E740011E340 /* Constant.swift */; };
 		E6ADD107248135300011E340 /* AudioAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6ADD106248135300011E340 /* AudioAsset.swift */; };
-		E6ADD108248135300011E340 /* AudioAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6ADD106248135300011E340 /* AudioAsset.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +44,8 @@
 		861727C02B575FEA00390D67 /* RemoteAudioAsset.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = RemoteAudioAsset.swift; sourceTree = "<group>"; };
 		91781294A431A2A7CC6EB714 /* Pods-Plugin.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Plugin.release.xcconfig"; path = "Pods/Target Support Files/Pods-Plugin/Pods-Plugin.release.xcconfig"; sourceTree = "<group>"; };
 		96ED1B6440D6672E406C8D19 /* Pods-PluginTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PluginTests.debug.xcconfig"; path = "Pods/Target Support Files/Pods-PluginTests/Pods-PluginTests.debug.xcconfig"; sourceTree = "<group>"; };
+		DB9D93F92E0920CB008D2725 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
+		DB9D93FC2E09231C008D2725 /* PluginTests.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = PluginTests.xctestplan; sourceTree = "<group>"; };
 		E6ADD0FB24809E740011E340 /* Constant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constant.swift; sourceTree = "<group>"; };
 		E6ADD106248135300011E340 /* AudioAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAsset.swift; sourceTree = "<group>"; };
 		F65BB2953ECE002E1EF3E424 /* Pods-PluginTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PluginTests.release.xcconfig"; path = "Pods/Target Support Files/Pods-PluginTests/Pods-PluginTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -97,6 +100,7 @@
 				861727C02B575FEA00390D67 /* RemoteAudioAsset.swift */,
 				50E1A94720377CB70090CE1A /* Plugin.swift */,
 				50ADFF8C201F53D600D50D53 /* Info.plist */,
+				DB9D93F92E0920CB008D2725 /* Logger.swift */,
 				E6ADD0FB24809E740011E340 /* Constant.swift */,
 				E6ADD106248135300011E340 /* AudioAsset.swift */,
 			);
@@ -106,6 +110,7 @@
 		50ADFF95201F53D600D50D53 /* PluginTests */ = {
 			isa = PBXGroup;
 			children = (
+				DB9D93FC2E09231C008D2725 /* PluginTests.xctestplan */,
 				50ADFF96201F53D600D50D53 /* PluginTests.swift */,
 				50ADFF98201F53D600D50D53 /* Info.plist */,
 			);
@@ -306,6 +311,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DB9D93FA2E0920CB008D2725 /* Logger.swift in Sources */,
 				50E1A94820377CB70090CE1A /* Plugin.swift in Sources */,
 				E6ADD107248135300011E340 /* AudioAsset.swift in Sources */,
 				E6ADD0FC24809E740011E340 /* Constant.swift in Sources */,
@@ -318,8 +324,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				50ADFF97201F53D600D50D53 /* PluginTests.swift in Sources */,
-				E6ADD108248135300011E340 /* AudioAsset.swift in Sources */,
 				E6ADD0FD24809E740011E340 /* Constant.swift in Sources */,
+				DB9D93FB2E0920CB008D2725 /* Logger.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

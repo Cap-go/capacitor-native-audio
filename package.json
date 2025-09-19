@@ -41,7 +41,7 @@
     "fmt": "npm run eslint -- --fix && npm run prettier -- --write && npm run swiftlint -- --autocorrect --format",
     "eslint": "eslint . --ext .ts",
     "prettier": "prettier \"**/*.{css,html,ts,js,java}\" --plugin=prettier-plugin-java",
-    "swiftlint": "node-swiftlint",
+    "swiftlint": "node-swiftlint --config .swiftlint.yml",
     "docgen": "docgen --api NativeAudio --output-readme README.md --output-json dist/docs.json",
     "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
@@ -56,7 +56,6 @@
     "@capacitor/ios": "^7.0.0",
     "@ionic/eslint-config": "^0.4.0",
     "@ionic/prettier-config": "^4.0.0",
-    "@ionic/swiftlint-config": "^2.0.0",
     "@types/node": "^22.13.1",
     "eslint": "^8.57.0",
     "eslint-plugin-import": "^2.31.0",
@@ -72,7 +71,6 @@
     "@capacitor/core": ">=7.0.0"
   },
   "prettier": "@ionic/prettier-config",
-  "swiftlint": "@ionic/swiftlint-config",
   "eslintConfig": {
     "extends": "@ionic/eslint-config/recommended"
   },

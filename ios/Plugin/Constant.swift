@@ -8,11 +8,17 @@
 
 public class Constant {
     // Parameter keys
-    public static let FadeKey = "fade"
+    public static let FadeIn = "fadeIn"
+    public static let FadeOut = "fadeOut"
+    public static let FadeInDuration = "fadeInDuration"
+    public static let FadeOutDuration = "fadeOutDuration"
+    public static let FadeOutStartTime = "fadeOutStartTime"
+    public static let FadeDuration = "duration"
     public static let FocusAudio = "focus"
-    public static let AssetPathKey = "assetPath"
-    public static let AssetIdKey = "assetId"
+    public static let AssetPath = "assetPath"
+    public static let AssetId = "assetId"
     public static let Volume = "volume"
+    public static let Time = "time"
     public static let Rate = "rate"
     public static let Loop = "loop"
     public static let Background = "background"
@@ -22,7 +28,7 @@ public class Constant {
     public static let DefaultVolume: Float = 1.0
     public static let DefaultRate: Float = 1.0
     public static let DefaultChannels: Int = 1
-    public static let DefaultFadeDelay: Float = 1.0
+    public static let DefaultFadeDuration: Float = 1.0
     public static let MinRate: Float = 0.25
     public static let MaxRate: Float = 4.0
     public static let MinVolume: Float = 0.0
