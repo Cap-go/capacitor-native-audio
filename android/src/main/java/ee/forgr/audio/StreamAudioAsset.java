@@ -352,7 +352,8 @@ public class StreamAudioAsset extends AudioAsset {
     }
 
     private void startPlaybackWithFade(Double time) {
-        if (!player.isPlayingAd()) { // Make sure we're not in an ad
+        if (!player.isPlayingAd()) {
+            // Make sure we're not in an ad
             if (time != null) {
                 player.seekTo(Math.round(time * 1000));
             } else if (player.isCurrentMediaItemLive()) {
@@ -393,7 +394,8 @@ public class StreamAudioAsset extends AudioAsset {
                 public void run() {
                     if (player.isPlaying()) {
                         fadeIn();
-                    } else if (attempts < 10) { // Try for 5 seconds (10 * 500ms)
+                    } else if (attempts < 10) {
+                        // Try for 5 seconds (10 * 500ms)
                         attempts++;
                         handler.postDelayed(this, 500);
                     }

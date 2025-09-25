@@ -17,7 +17,7 @@ public class RemoteAudioAsset: AudioAsset {
 
         owner.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
-            
+
             guard let url = URL(string: path ?? "") else {
                 print("Invalid URL: \(String(describing: path))")
                 return
@@ -158,13 +158,13 @@ public class RemoteAudioAsset: AudioAsset {
                 forName: NSNotification.Name.AVPlayerItemDidPlayToEndTime,
                 object: player.currentItem,
                 queue: OperationQueue.main) { [weak self, weak player] notification in
-                    guard let strongSelf = self, let strongPlayer = player else { return }
+                guard let strongSelf = self, let strongPlayer = player else { return }
 
-                    if let currentItem = notification.object as? AVPlayerItem,
-                       strongPlayer.currentItem == currentItem {
-                        strongSelf.playerDidFinishPlaying(player: strongPlayer)
-                    }
+                if let currentItem = notification.object as? AVPlayerItem,
+                   strongPlayer.currentItem == currentItem {
+                    strongSelf.playerDidFinishPlaying(player: strongPlayer)
                 }
+            }
             notificationObservers.append(observer)
             startCurrentTimeUpdates()
         }
@@ -205,14 +205,14 @@ public class RemoteAudioAsset: AudioAsset {
                     forName: .AVPlayerItemDidPlayToEndTime,
                     object: playerItem,
                     queue: OperationQueue.main) { [weak self, weak player] notification in
-                        guard let strongPlayer = player,
-                              let strongSelf = self,
-                              let item = notification.object as? AVPlayerItem,
-                              strongPlayer.currentItem === item else { return }
+                    guard let strongPlayer = player,
+                          let strongSelf = self,
+                          let item = notification.object as? AVPlayerItem,
+                          strongPlayer.currentItem === item else { return }
 
-                        strongPlayer.seek(to: .zero)
-                        strongPlayer.play()
-                    }
+                    strongPlayer.seek(to: .zero)
+                    strongPlayer.play()
+                }
 
                 notificationObservers.append(observer)
 

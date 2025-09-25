@@ -75,6 +75,10 @@ npx cap sync
 
 On iOS, Android and Web, no further steps are needed.
 
+### Swift Package Manager
+
+You can also consume the iOS implementation via Swift Package Manager. In Xcode open **File → Add Package…**, point it at `https://github.com/Cap-go/capacitor-native-audio.git`, and select the `CapgoNativeAudio` library product. The package supports iOS 14 and newer alongside Capacitor 7.
+
 ## Configuration
 
 No configuration required for this plugin.

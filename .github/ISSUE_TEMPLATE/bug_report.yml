@@ -64,7 +64,7 @@ body:
       required: true
   - type: checkboxes
     attributes:
-      label:  Before submitting 
+      label:  Before submitting
       description: |
         A well-written bug report allows the maintainers to quickly recreate the necessary conditions to inspect the bug and quickly find its root cause.
         Please ensure your bug report fulfills all of the following requirements.
@@ -77,10 +77,9 @@ body:
         required: true
   - type: checkboxes
     attributes:
-      label: Fastest way to fix this issue 
+      label: Fastest way to fix this issue
       description: |
         Founding is a great way to get your issue fixed fast. This make community contributions more likely to happen and discharge the maintainers from the burden of being the only one fixing all issues.
       options:
       - label: I want to get this fix ASAP and [found the issue with Algora](https://console.algora.io/org/gl/bounties/community?fund=Cap-go%2Fcapacitor-inappbrowser) we recommend ($50 to $500)
         required: false
-
