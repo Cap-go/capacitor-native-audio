@@ -65,7 +65,9 @@ h1 {
   border-radius: 12px;
   font-size: 0.95rem;
   cursor: pointer;
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
 }
 
 .actions button:disabled,
