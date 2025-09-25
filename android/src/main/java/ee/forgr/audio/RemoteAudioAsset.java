@@ -301,10 +301,12 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     public void unload() throws Exception {
-        for (ExoPlayer player : players) {
-            player.release();
-        }
-        players.clear();
+        new Handler(Looper.getMainLooper()).post(() -> {
+            for (ExoPlayer player : players) {
+                player.release();
+            }
+            players.clear();
+        });
     }
 
     @Override
