@@ -301,10 +301,49 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     public void unload() throws Exception {
-        for (ExoPlayer player : players) {
-            player.release();
+    @Override
+    public void unload() throws Exception {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            // Synchronous cleanup when already on the main thread
+            stopCurrentTimeUpdates();
+            for (ExoPlayer player : new ArrayList<>(players)) {
+                try {
+                    player.release();
+                } catch (Exception e) {
+                    Log.w(TAG, "Error releasing player", e);
+                }
+            }
+            players.clear();
+            isPrepared = false;
+            playIndex = 0;
+            return;
         }
-        players.clear();
+        // Ensure cleanup completes before returning when called off the main thread
+        final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                stopCurrentTimeUpdates();
+                for (ExoPlayer player : new ArrayList<>(players)) {
+                    try {
+                        player.release();
+                    } catch (Exception e) {
+                        Log.w(TAG, "Error releasing player", e);
+                    }
+                }
+                players.clear();
+                isPrepared = false;
+                playIndex = 0;
+            } finally {
+                latch.countDown();
+            }
+        });
+        try {
+            // Don't block forever; adjust timeout as needed
+            latch.await(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
     }
 
     @Override
