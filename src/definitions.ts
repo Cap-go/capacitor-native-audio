@@ -72,10 +72,35 @@ export interface ConfigureOptions {
   /**
    * Show audio playback in the notification center (iOS and Android)
    * When enabled, displays audio metadata (title, artist, album, artwork) in the system notification
+   * and Control Center (iOS) or lock screen.
+   * 
+   * **Important iOS Behavior:**
+   * Enabling this option changes the audio session category to `.playback` with `.default` mode,
+   * which means your app's audio will **interrupt** other apps' audio (like background music from
+   * Spotify, Apple Music, etc.) instead of mixing with it. This is required for the Now Playing
+   * info to appear in Control Center and on the lock screen.
+   * 
+   * **Trade-offs:**
+   * - `showNotification: true` → Shows Now Playing controls, but interrupts other audio
+   * - `showNotification: false` → Audio mixes with other apps, but no Now Playing controls
+   * 
+   * Use this when your app is the primary audio source (music players, podcast apps, etc.).
+   * Disable this for secondary audio like sound effects or notification sounds where mixing
+   * with background music is preferred.
+   * 
+   * @see https://github.com/Cap-go/capacitor-native-audio/issues/202
    */
   showNotification?: boolean;
 }
 
+/**
+ * Metadata to display in the notification center, Control Center (iOS), and lock screen
+ * when `showNotification` is enabled in `configure()`.
+ * 
+ * Note: This metadata will only be displayed if `showNotification: true` is set in the
+ * `configure()` method. See {@link ConfigureOptions.showNotification} for important
+ * behavior details about audio mixing on iOS.
+ */
 export interface NotificationMetadata {
   /**
    * The title to display in the notification center
@@ -121,8 +146,13 @@ export interface PreloadOptions {
    */
   isUrl?: boolean;
   /**
-   * Metadata to display in the notification center when audio is playing
-   * Only used when showNotification is enabled in configure()
+   * Metadata to display in the notification center when audio is playing.
+   * Only used when `showNotification: true` is set in `configure()`.
+   * 
+   * See {@link ConfigureOptions.showNotification} for important details about
+   * how this affects audio mixing behavior on iOS.
+   * 
+   * @see NotificationMetadata
    */
   notificationMetadata?: NotificationMetadata;
 }

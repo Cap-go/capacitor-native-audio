@@ -136,6 +136,19 @@ No configuration required for this plugin.
 
 You can display audio playback information in the system notification center. This is perfect for music players, podcast apps, and any app that plays audio in the background.
 
+> **⚠️ Important iOS Behavior**
+> 
+> Enabling `showNotification: true` changes how your app's audio interacts with other apps on iOS:
+> 
+> - **With notifications enabled** (showNotification: true): Your audio will **interrupt** other apps' audio (like Spotify, Apple Music, etc.). This is required for Now Playing controls to appear in Control Center and on the lock screen.
+> - **With notifications disabled** (showNotification: false): Your audio will **mix** with other apps' audio, allowing background music to continue playing.
+> 
+> **When to use each:**
+> - ✅ Use `showNotification: true` for: Music players, podcast apps, audiobook players (primary audio source)
+> - ❌ Use `showNotification: false` for: Sound effects, notification sounds, secondary audio where mixing is preferred
+> 
+> See [Issue #202](https://github.com/Cap-go/capacitor-native-audio/issues/202) for technical details.
+
 **Step 1: Configure the plugin with notification support**
 
 ```typescript
@@ -193,6 +206,7 @@ The media control buttons automatically handle:
 - All metadata fields are optional
 - Artwork can be a local file path or remote URL
 - The notification only appears when `showNotification: true` is set in configure()
+- ⚠️ **iOS:** Enabling notifications will interrupt other apps' audio (see warning above)
 - iOS: Uses MPNowPlayingInfoCenter with MPRemoteCommandCenter
 - Android: Uses MediaSession with NotificationCompat.MediaStyle
 
