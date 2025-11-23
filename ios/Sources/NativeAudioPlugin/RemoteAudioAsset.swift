@@ -12,7 +12,7 @@ public class RemoteAudioAsset: AudioAsset {
     var duration: TimeInterval = 0
     var asset: AVURLAsset?
 
-    override init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!, withFadeDelay delay: Float!) {
+    init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!, withFadeDelay delay: Float!, withHeaders headers: [String: String]?) {
         super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0, withFadeDelay: delay ?? 0.0)
 
         owner.executeOnAudioQueue { [weak self] in
@@ -23,7 +23,13 @@ public class RemoteAudioAsset: AudioAsset {
                 return
             }
 
-            let asset = AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+            // Build AVURLAsset options with custom headers if provided
+            var options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+            if let headers = headers, !headers.isEmpty {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            }
+
+            let asset = AVURLAsset(url: url, options: options)
             self.asset = asset
 
             // Limit channels to a reasonable maximum to prevent resource issues

@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Map;
 
 @UnstableApi
 public class RemoteAudioAsset extends AudioAsset {
@@ -36,13 +37,16 @@ public class RemoteAudioAsset extends AudioAsset {
     private float initialVolume;
     private Handler currentTimeHandler;
     private Runnable currentTimeRunnable;
+    private final Map<String, String> headers;
 
-    public RemoteAudioAsset(NativeAudio owner, String assetId, Uri uri, int audioChannelNum, float volume) throws Exception {
+    public RemoteAudioAsset(NativeAudio owner, String assetId, Uri uri, int audioChannelNum, float volume, Map<String, String> headers)
+        throws Exception {
         super(owner, assetId, null, 0, volume);
         this.uri = uri;
         this.volume = volume;
         this.initialVolume = volume;
         this.players = new ArrayList<>();
+        this.headers = headers;
 
         if (audioChannelNum < 1) {
             audioChannelNum = 1;
@@ -87,11 +91,16 @@ public class RemoteAudioAsset extends AudioAsset {
             );
         }
 
-        // Create cached data source factory
+        // Create cached data source factory with custom headers
         DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(15000);
+
+        // Add custom headers if provided
+        if (headers != null && !headers.isEmpty()) {
+            httpDataSourceFactory.setDefaultRequestProperties(headers);
+        }
 
         CacheDataSource.Factory cacheDataSourceFactory = new CacheDataSource.Factory()
             .setCache(cache)

@@ -50,6 +50,7 @@ import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 @UnstableApi
@@ -644,14 +645,40 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     if (uri.getScheme() != null && (uri.getScheme().equals("http") || uri.getScheme().equals("https"))) {
                         // Remote URL
                         Log.d("AudioPlugin", "Debug: Remote URL detected: " + uri.toString());
+
+                        // Extract headers if provided
+                        Map<String, String> requestHeaders = null;
+                        JSObject headersObj = call.getObject("headers");
+                        if (headersObj != null) {
+                            requestHeaders = new HashMap<>();
+                            for (Iterator<String> it = headersObj.keys(); it.hasNext(); ) {
+                                String key = it.next();
+                                try {
+                                    String value = headersObj.getString(key);
+                                    if (value != null) {
+                                        requestHeaders.put(key, value);
+                                    }
+                                } catch (Exception e) {
+                                    Log.w("AudioPlugin", "Skipping non-string header: " + key);
+                                }
+                            }
+                        }
+
                         if (assetPath.endsWith(".m3u8")) {
                             // HLS Stream - resolve immediately since it's a stream
-                            StreamAudioAsset streamAudioAsset = new StreamAudioAsset(this, audioId, uri, volume);
+                            StreamAudioAsset streamAudioAsset = new StreamAudioAsset(this, audioId, uri, volume, requestHeaders);
                             audioAssetList.put(audioId, streamAudioAsset);
                             call.resolve(status);
                         } else {
                             // Regular remote audio
-                            RemoteAudioAsset remoteAudioAsset = new RemoteAudioAsset(this, audioId, uri, audioChannelNum, volume);
+                            RemoteAudioAsset remoteAudioAsset = new RemoteAudioAsset(
+                                this,
+                                audioId,
+                                uri,
+                                audioChannelNum,
+                                volume,
+                                requestHeaders
+                            );
                             remoteAudioAsset.setCompletionListener(this::dispatchComplete);
                             audioAssetList.put(audioId, remoteAudioAsset);
                             call.resolve(status);

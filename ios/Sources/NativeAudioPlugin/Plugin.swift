@@ -667,7 +667,17 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     }
                 } else {
                     // Handle remote URL
-                    let remoteAudioAsset = RemoteAudioAsset(owner: self, withAssetId: audioId, withPath: assetPath, withChannels: channels, withVolume: volume, withFadeDelay: delay)
+                    // Extract headers if provided
+                    var headers: [String: String]?
+                    if let headersObj = call.getObject("headers") {
+                        headers = [:]
+                        for (key, value) in headersObj {
+                            if let stringValue = value as? String {
+                                headers?[key] = stringValue
+                            }
+                        }
+                    }
+                    let remoteAudioAsset = RemoteAudioAsset(owner: self, withAssetId: audioId, withPath: assetPath, withChannels: channels, withVolume: volume, withFadeDelay: delay, withHeaders: headers)
                     self.audioList[audioId] = remoteAudioAsset
                     call.resolve()
                     return
