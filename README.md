@@ -327,6 +327,49 @@ NativeAudio.isPlaying({
 .then(result => {
   console.log(result.isPlaying);
 })
+
+
+### PlayOnce Method (Fire-and-Forget Audio)
+
+The `playOnce` method is designed for simple, single-shot audio playback, such as sound effects or notifications. It plays an audio file one time and automatically unloads it from memory after playback is complete. This makes it ideal for scenarios where you don't need to control the audio after it starts playing, or when you want to ensure resources are freed immediately.
+
+**Key Characteristics:**
+- **Plays Once:** The audio will play from start to finish a single time. Looping is not supported.
+- **Auto-Unload:** Once playback is complete, the audio asset is automatically unloaded from memory, preventing resource leaks.
+- **Fire-and-Forget:** You initiate playback and don't need to manage `stop()` or `unload()` calls yourself.
+- **Returns `assetId`:** The method returns a promise resolving with a unique `assetId` that was generated internally. This ID can be used for debugging or if you need to manually stop the audio before it naturally finishes (though this is generally not the intent of `playOnce`).
+
+**How to Implement:**
+
+```typescript
+import { NativeAudio } from '@capgo/native-audio';
+
+// Example of playing a local sound effect
+NativeAudio.playOnce({
+  assetPath: 'assets/sounds/beep.wav', // Path to your audio file (local or remote)
+  isUrl: false, // Set to true if assetPath is a remote URL
+  volume: 0.8, // Optional: Set volume (0.0 to 1.0)
+  autoPlay: true, // Optional: Start playing as soon as ready (default: true)
+  time: 0, // Optional: Start time in milliseconds (default: 0)
+  deleteAfterPlay: false, // Optional: For file-based assets, delete the file after playback (default: false)
+})
+.then(result => {
+  console.log(`playOnce initiated with assetId: ${result.assetId}`);
+})
+.catch(error => {
+  console.error('Error playing audio once:', error);
+});
+
+// Example of playing a remote notification sound
+NativeAudio.playOnce({
+  assetPath: 'https://example.com/notification.mp3',
+  isUrl: true,
+  volume: 1.0,
+});
+```
+
+Use `playOnce` when you need simple, transient audio without managing its lifecycle manually. For audio that requires pausing, resuming, looping, or complex control, use the `preload`, `play`, `pause`, `resume`, and `loop` methods.
+
 ```
 
 ## API
@@ -366,6 +409,25 @@ Load an audio file
 | **`options`** | <code><a href="#preloadoptions">PreloadOptions</a></code> |
 
 **Since:** 5.0.0
+
+--------------------
+
+
+### playOnce(...)
+
+```typescript
+playOnce(options: PlayOnceOptions) => Promise<{ assetId: string; }>
+```
+
+Play an audio file once
+
+| Param         | Type                                                        |
+| ------------- | ----------------------------------------------------------- |
+| **`options`** | <code><a href="#playonceoptions">PlayOnceOptions</a></code> |
+
+**Returns:** <code>Promise&lt;{ assetId: string; }&gt;</code>
+
+**Since:** 7.11.0
 
 --------------------
 
@@ -725,6 +787,18 @@ behavior details about audio mixing on iOS.
 | **`artist`**     | <code>string</code> | The artist name to display in the notification center |
 | **`album`**      | <code>string</code> | The album name to display in the notification center  |
 | **`artworkUrl`** | <code>string</code> | URL or local path to the artwork/album art image      |
+
+
+#### PlayOnceOptions
+
+| Prop                  | Type                 | Description                                                                                                                                                                           | Default           |
+| --------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| **`assetPath`**       | <code>string</code>  | Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://) Supported formats: - MP3, WAV (all platforms) - M3U8/HLS streams (iOS and Android) |                   |
+| **`volume`**          | <code>number</code>  | Volume of the audio, between 0.1 and 1.0                                                                                                                                              |                   |
+| **`isUrl`**           | <code>boolean</code> | Is the audio file a URL, pass true if assetPath is a `file://` url or a streaming URL (m3u8)                                                                                          |                   |
+| **`deleteAfterPlay`** | <code>boolean</code> | Delete the file after playing                                                                                                                                                         |                   |
+| **`time`**            | <code>number</code>  | Time to start playing the audio, in milliseconds                                                                                                                                      |                   |
+| **`autoPlay`**        | <code>boolean</code> | Set to true to autoplay the audio                                                                                                                                                     | <code>true</code> |
 
 
 #### Assets

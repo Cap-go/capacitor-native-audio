@@ -19,6 +19,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     var assetId: String = ""
     var initialVolume: Float = 1.0
     var fadeDelay: Float = 1.0
+    var completion: ((String) -> Void)?
     weak var owner: NativeAudio?
 
     // Constants for fade effect

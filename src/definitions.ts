@@ -165,6 +165,39 @@ export interface PreloadOptions {
   headers?: Record<string, string>;
 }
 
+export interface PlayOnceOptions {
+  /**
+   * Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://)
+   * Supported formats:
+   * - MP3, WAV (all platforms)
+   * - M3U8/HLS streams (iOS and Android)
+   */
+  assetPath: string;
+  /**
+   * Volume of the audio, between 0.1 and 1.0
+   */
+  volume?: number;
+  /**
+   * Is the audio file a URL, pass true if assetPath is a `file://` url
+   * or a streaming URL (m3u8)
+   */
+  isUrl?: boolean;
+  /**
+   * Delete the file after playing
+   */
+  deleteAfterPlay?: boolean;
+  /**
+   * Time to start playing the audio, in milliseconds
+   */
+  time?: number;
+
+  /**
+   * Set to true to autoplay the audio
+   * @default true
+   */
+  autoPlay?: boolean;
+}
+
 export interface CurrentTimeEvent {
   /**
    * Current time of the audio in seconds
@@ -194,6 +227,13 @@ export interface NativeAudio {
    * @returns
    */
   preload(options: PreloadOptions): Promise<void>;
+  /**
+   * Play an audio file once
+   * @since 7.11.0
+   * @param option {@link PlayOnceOptions}
+   * @returns
+   */
+  playOnce(options: PlayOnceOptions): Promise<{ assetId: string }>;
   /**
    * Check if an audio file is preloaded
    *

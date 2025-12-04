@@ -45,10 +45,10 @@ const App = () => {
   const [volumeMap, setVolumeMap] = useState<Record<AssetKey, number>>({ local: 1, remote: 1 });
   const [statusMessage, setStatusMessage] = useState('Idle');
   const [currentPosition, setCurrentPosition] = useState(0);
-  const [isLooping, setIsLooping] = useState(false);
   const [playingAsset, setPlayingAsset] = useState<AssetKey | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const playingAssetRef = useRef<AssetKey | null>(null);
+  const [isPlayingOnce, setIsPlayingOnce] = useState(false);
   
   // Notification controls
   const [showNotification, setShowNotification] = useState(false);
@@ -83,6 +83,11 @@ const App = () => {
         completeHandle = await NativeAudio.addListener('complete', event => {
           const assetKey = findAssetKeyById(event.assetId);
           if (!assetKey) {
+            // Handle playOnce completions (which have temporary IDs)
+            if (event.assetId.startsWith('playOnce_')) {
+              setStatusMessage(`One-time playback completed (${event.assetId.substring(0, 20)}...).`);
+              setIsPlayingOnce(false);
+            }
             return;
           }
           setPlayingAsset(prev => (prev === assetKey ? null : prev));
@@ -231,25 +236,6 @@ const App = () => {
     }
   };
 
-  const toggleLoop = async () => {
-    if (!playingAsset) {
-      return;
-    }
-    try {
-      if (!isLooping) {
-        await NativeAudio.loop({ assetId: assets[playingAsset].assetId });
-        setStatusMessage(`${assets[playingAsset].label} is looping.`);
-      } else {
-        await NativeAudio.stop({ assetId: assets[playingAsset].assetId });
-        await NativeAudio.play({ assetId: assets[playingAsset].assetId });
-        setStatusMessage(`Loop disabled for ${assets[playingAsset].label}.`);
-      }
-      setIsLooping(prev => !prev);
-    } catch (error) {
-      setErrorMessage(normalizeError(error));
-    }
-  };
-
   const handleVolumeChange = async (key: AssetKey, rawValue: string) => {
     const value = Number(rawValue);
     setVolumeMap(prev => ({ ...prev, [key]: value }));
@@ -291,6 +277,8 @@ const App = () => {
       setErrorMessage(normalizeError(error));
     }
   };
+
+
 
   return (
     <main className="app">
@@ -409,9 +397,6 @@ const App = () => {
           </div>
         </div>
         <div className="secondary-actions">
-          <button type="button" onClick={toggleLoop} disabled={!playingAsset}>
-            {isLooping ? 'Disable Loop' : 'Loop Current'}
-          </button>
           <button type="button" onClick={() => refreshPlaybackState(activeAsset)}>
             Refresh State
           </button>
@@ -419,6 +404,46 @@ const App = () => {
             Clear Remote Cache
           </button>
         </div>
+      </section>
+
+      <section className="panel">
+        <h2>One-Time Play</h2>
+        <p className="asset-description">
+          Test the <code>playOnce</code> method for fire-and-forget playback. The asset is automatically unloaded after completion, and it will always play only once.
+        </p>
+        <div className="actions">
+          <button 
+            type="button" 
+            onClick={async () => {
+              // Prevent multiple simultaneous playbacks
+              if (isPlayingOnce) {
+                setStatusMessage('Already playing. Wait for current track to finish.');
+                return;
+              }
+
+              const definition = assets[activeAsset];
+              try {
+                setIsPlayingOnce(true);
+                setStatusMessage(`Playing ${definition.label} once...`);
+                const { assetId } = await NativeAudio.playOnce({
+                  assetPath: definition.assetPath,
+                  isUrl: definition.isUrl,
+                  volume: volumeMap[activeAsset],
+                  time: 0,
+                  autoPlay: true,
+                });
+                setStatusMessage(`playOnce started for ${definition.label} (ID: ${assetId.substring(0, 20)}...).`);
+              } catch (error) {
+                setIsPlayingOnce(false);
+                setErrorMessage(normalizeError(error));
+              }
+            }}
+            disabled={isPlayingOnce}
+          >
+            Play "{activeDefinition.label}" Once {isPlayingOnce && '(Playing...)'}
+          </button>
+        </div>
+        
       </section>
 
       <section className="panel">

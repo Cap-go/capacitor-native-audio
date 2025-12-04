@@ -266,7 +266,157 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             }
         );
     }
+    
+    @PluginMethod
+    public void playOnce(final PluginCall call) {
+        this.getActivity().runOnUiThread(
+            new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        final String assetPath = call.getString(ASSET_PATH);
+                        final float volume = call.getFloat(VOLUME, 1.0f);
+                        final boolean isUrl = call.getBoolean("isUrl", false);
+                        final double time = call.getDouble("time", 0.0);
+                        final boolean deleteAfterPlay = call.getBoolean("deleteAfterPlay", false);
+                        final boolean autoPlay = call.getBoolean("autoPlay", true);
 
+                        if (!isStringValid(assetPath)) {
+                            call.reject(ERROR_ASSET_PATH_MISSING);
+                            return;
+                        }
+
+                        // Generate a unique assetId
+                        final String audioId = "playOnce_" + java.util.UUID.randomUUID().toString();
+
+                        // Initialize sound pool
+                        initSoundPool();
+
+                        // Preload the asset directly
+                        try {
+                            boolean isLocalUrl = isUrl;
+                            int audioChannelNum = 1;
+
+                            if (isLocalUrl) {
+                                Uri uri = Uri.parse(assetPath);
+                                if (uri.getScheme() != null && (uri.getScheme().equals("http") || uri.getScheme().equals("https"))) {
+                                    // Remote URL
+                                    if (assetPath.endsWith(".m3u8")) {
+                                        // HLS Stream
+                                        StreamAudioAsset streamAudioAsset = new StreamAudioAsset(NativeAudio.this, audioId, uri, volume, null);
+                                        audioAssetList.put(audioId, streamAudioAsset);
+                                    } else {
+                                        // Regular remote audio
+                                        RemoteAudioAsset remoteAudioAsset = new RemoteAudioAsset(
+                                            NativeAudio.this,
+                                            audioId,
+                                            uri,
+                                            audioChannelNum,
+                                            volume,
+                                            null
+                                        );
+                                        remoteAudioAsset.setCompletionListener(completedAssetId -> {
+                                            handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
+                                        });
+                                        audioAssetList.put(audioId, remoteAudioAsset);
+                                    }
+                                } else if (uri.getScheme() != null && uri.getScheme().equals("file")) {
+                                    // Local file URL
+                                    File file = new File(uri.getPath());
+                                    if (!file.exists()) {
+                                        call.reject(ERROR_ASSET_PATH_MISSING + " - " + assetPath);
+                                        return;
+                                    }
+                                    ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
+                                    AssetFileDescriptor afd = new AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH);
+                                    AudioAsset asset = new AudioAsset(NativeAudio.this, audioId, afd, audioChannelNum, volume);
+                                    asset.setCompletionListener(completedAssetId -> {
+                                        handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
+                                    });
+                                    audioAssetList.put(audioId, asset);
+                                } else {
+                                    call.reject("Invalid URL scheme: " + uri.getScheme());
+                                    return;
+                                }
+                            } else {
+                                // Handle asset in public folder
+                                String fullAssetPath = assetPath;
+                                if (!fullAssetPath.startsWith("public/")) {
+                                    fullAssetPath = "public/" + fullAssetPath;
+                                }
+                                Context ctx = getContext().getApplicationContext();
+                                AssetManager am = ctx.getResources().getAssets();
+                                AssetFileDescriptor assetFileDescriptor = am.openFd(fullAssetPath);
+                                AudioAsset asset = new AudioAsset(NativeAudio.this, audioId, assetFileDescriptor, audioChannelNum, volume);
+                                asset.setCompletionListener(completedAssetId -> {
+                                    handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
+                                });
+                                audioAssetList.put(audioId, asset);
+                            }
+
+                            // Play the asset if autoPlay is true
+                            if (autoPlay && audioAssetList.containsKey(audioId)) {
+                                AudioAsset asset = audioAssetList.get(audioId);
+                                if (asset != null) {
+                                    if (fadeMusic) {
+                                        asset.playWithFade(time);
+                                    } else {
+                                        asset.play(time);
+                                    }
+                                }
+                            }
+
+                            // Return the assetId
+                            JSObject ret = new JSObject();
+                            ret.put("assetId", audioId);
+                            call.resolve(ret);
+
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error in playOnce preload/play", e);
+                            call.reject("Error in playOnce: " + e.getMessage());
+                        }
+                    } catch (Exception ex) {
+                        Log.e(TAG, "Error in playOnce", ex);
+                        call.reject("Error in playOnce: " + ex.getMessage());
+                    }
+                }
+            }
+        );
+    }
+
+    private void handlePlayOnceCompletion(String completedAssetId, String assetPath, boolean deleteAfterPlay, boolean isUrl) {
+        // Unload the asset
+        try {
+            if (audioAssetList.containsKey(completedAssetId)) {
+                AudioAsset completedAsset = audioAssetList.get(completedAssetId);
+                if (completedAsset != null) {
+                    completedAsset.unload();
+                    audioAssetList.remove(completedAssetId);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error unloading asset in playOnce completion", e);
+        }
+
+        // Delete the file if requested
+        if (deleteAfterPlay && isUrl) {
+            try {
+                Uri uri = Uri.parse(assetPath);
+                if (uri.getScheme() != null && uri.getScheme().equals("file")) {
+                    File file = new File(uri.getPath());
+                    if (file.exists()) {
+                        boolean deleted = file.delete();
+                        Log.d(TAG, "File deletion " + (deleted ? "successful" : "failed") + ": " + file.getAbsolutePath());
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error deleting file in playOnce completion", e);
+            }
+        }
+
+        // Dispatch completion event
+        dispatchComplete(completedAssetId);
+    }
     @PluginMethod
     public void getCurrentTime(final PluginCall call) {
         try {
@@ -518,8 +668,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 AudioAsset asset = audioAssetList.get(audioId);
                 if (asset != null) {
                     call.resolve(new JSObject().put("isPlaying", asset.isPlaying()));
-                } else {
-                    call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
                 }
             } else {
                 call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
@@ -746,7 +894,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     } else {
                         if (fadeMusic) {
                             asset.playWithFade(time);
-                        } else {
+                        }
+                        else {
                             asset.play(time);
                         }
                     }
@@ -919,7 +1068,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             stopAudio(currentlyPlayingAssetId);
                             clearNotification();
                             currentlyPlayingAssetId = null;
-                        } catch (Exception e) {
+                        }
+                        catch (Exception e) {
                             Log.e(TAG, "Error stopping audio from media session", e);
                         }
                     }

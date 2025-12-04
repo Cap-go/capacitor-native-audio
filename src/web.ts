@@ -1,7 +1,7 @@
 import { WebPlugin } from '@capacitor/core';
 
 import { AudioAsset } from './audio-asset';
-import type { ConfigureOptions, PreloadOptions } from './definitions';
+import type { ConfigureOptions, PlayOnceOptions, PreloadOptions } from './definitions';
 import { NativeAudio } from './definitions';
 
 export class NativeAudioWeb extends WebPlugin implements NativeAudio {
@@ -94,6 +94,43 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     return audio.play();
   }
 
+  async playOnce(options: PlayOnceOptions): Promise<{ assetId: string }> {
+    const { assetPath, time = 0, autoPlay = true } = options;
+    const assetId = `playOnce_${Math.random().toString(36).substring(7)}`;
+
+    const audio = new Audio(assetPath);
+    audio.autoplay = autoPlay;
+    audio.loop = false;
+    audio.preload = 'auto';
+    if (options.volume) {
+      audio.volume = options.volume;
+    }
+
+    const asset = new AudioAsset(audio);
+    NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.set(assetId, asset);
+
+    return new Promise((resolve) => {
+      const onCanPlay = async () => {
+        audio.currentTime = time;
+        if (autoPlay) {
+          await audio.play();
+        }
+        resolve({ assetId });
+      };
+      
+      if (autoPlay) {
+        audio.addEventListener('canplaythrough', onCanPlay, { once: true });
+      } else {
+        resolve({ assetId });
+      }
+
+      audio.addEventListener('ended', () => {
+        this.onEnded(assetId);
+        this.unload({ assetId });
+      });
+    })
+  }
+  
   async loop(options: { assetId: string }): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     await this.stop(options);
