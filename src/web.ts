@@ -117,7 +117,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         }
         resolve({ assetId });
       };
-      
+
       if (autoPlay) {
         audio.addEventListener('canplaythrough', onCanPlay, { once: true });
       } else {
@@ -128,9 +128,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
         this.onEnded(assetId);
         this.unload({ assetId });
       });
-    })
+    });
   }
-  
+
   async loop(options: { assetId: string }): Promise<void> {
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     await this.stop(options);

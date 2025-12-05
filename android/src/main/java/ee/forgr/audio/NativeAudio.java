@@ -266,7 +266,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             }
         );
     }
-    
+
     @PluginMethod
     public void playOnce(final PluginCall call) {
         this.getActivity().runOnUiThread(
@@ -303,7 +303,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                     // Remote URL
                                     if (assetPath.endsWith(".m3u8")) {
                                         // HLS Stream
-                                        StreamAudioAsset streamAudioAsset = new StreamAudioAsset(NativeAudio.this, audioId, uri, volume, null);
+                                        StreamAudioAsset streamAudioAsset = new StreamAudioAsset(
+                                            NativeAudio.this,
+                                            audioId,
+                                            uri,
+                                            volume,
+                                            null
+                                        );
                                         audioAssetList.put(audioId, streamAudioAsset);
                                     } else {
                                         // Regular remote audio
@@ -315,7 +321,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                             volume,
                                             null
                                         );
-                                        remoteAudioAsset.setCompletionListener(completedAssetId -> {
+                                        remoteAudioAsset.setCompletionListener((completedAssetId) -> {
                                             handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
                                         });
                                         audioAssetList.put(audioId, remoteAudioAsset);
@@ -330,7 +336,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                     ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
                                     AssetFileDescriptor afd = new AssetFileDescriptor(pfd, 0, AssetFileDescriptor.UNKNOWN_LENGTH);
                                     AudioAsset asset = new AudioAsset(NativeAudio.this, audioId, afd, audioChannelNum, volume);
-                                    asset.setCompletionListener(completedAssetId -> {
+                                    asset.setCompletionListener((completedAssetId) -> {
                                         handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
                                     });
                                     audioAssetList.put(audioId, asset);
@@ -348,7 +354,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                 AssetManager am = ctx.getResources().getAssets();
                                 AssetFileDescriptor assetFileDescriptor = am.openFd(fullAssetPath);
                                 AudioAsset asset = new AudioAsset(NativeAudio.this, audioId, assetFileDescriptor, audioChannelNum, volume);
-                                asset.setCompletionListener(completedAssetId -> {
+                                asset.setCompletionListener((completedAssetId) -> {
                                     handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
                                 });
                                 audioAssetList.put(audioId, asset);
@@ -370,7 +376,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             JSObject ret = new JSObject();
                             ret.put("assetId", audioId);
                             call.resolve(ret);
-
                         } catch (Exception e) {
                             Log.e(TAG, "Error in playOnce preload/play", e);
                             call.reject("Error in playOnce: " + e.getMessage());
@@ -417,6 +422,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         // Dispatch completion event
         dispatchComplete(completedAssetId);
     }
+
     @PluginMethod
     public void getCurrentTime(final PluginCall call) {
         try {
@@ -894,8 +900,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     } else {
                         if (fadeMusic) {
                             asset.playWithFade(time);
-                        }
-                        else {
+                        } else {
                             asset.play(time);
                         }
                     }
@@ -1068,8 +1073,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             stopAudio(currentlyPlayingAssetId);
                             clearNotification();
                             currentlyPlayingAssetId = null;
-                        }
-                        catch (Exception e) {
+                        } catch (Exception e) {
                             Log.e(TAG, "Error stopping audio from media session", e);
                         }
                     }
