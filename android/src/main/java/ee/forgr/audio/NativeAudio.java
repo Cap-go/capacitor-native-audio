@@ -819,8 +819,22 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         }
 
                         if (assetPath.endsWith(".m3u8")) {
-                            // HLS Stream - resolve immediately since it's a stream
-                            StreamAudioAsset streamAudioAsset = new StreamAudioAsset(this, audioId, uri, volume, requestHeaders);
+                            // HLS Stream - check if HLS support is available
+                            if (!HlsAvailabilityChecker.isHlsAvailable()) {
+                                call.reject(
+                                    "HLS streaming (.m3u8) is not available. " +
+                                        "The media3-exoplayer-hls dependency is not included. " +
+                                        "To enable HLS support, set 'hls: true' in capacitor.config.ts under NativeAudio plugin config " +
+                                        "and run 'npx cap sync'. This will increase APK size by ~4MB."
+                                );
+                                return;
+                            }
+                            // HLS Stream - create via reflection to allow compile-time exclusion
+                            AudioAsset streamAudioAsset = createStreamAudioAsset(audioId, uri, volume, requestHeaders);
+                            if (streamAudioAsset == null) {
+                                call.reject("Failed to create HLS stream player. HLS support may not be properly configured.");
+                                return;
+                            }
                             audioAssetList.put(audioId, streamAudioAsset);
                             call.resolve(status);
                         } else {
@@ -936,6 +950,37 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     private boolean isStringValid(String value) {
         return (value != null && !value.isEmpty() && !value.equals("null"));
+    }
+
+    /**
+     * Creates a StreamAudioAsset via reflection.
+     * This allows the StreamAudioAsset class to be excluded at compile time when HLS is disabled,
+     * reducing APK size by ~4MB.
+     *
+     * @param audioId The unique identifier for the audio asset
+     * @param uri The URI of the HLS stream
+     * @param volume The initial volume (0.0 to 1.0)
+     * @param headers Optional HTTP headers for the request
+     * @return The created AudioAsset, or null if creation failed
+     */
+    private AudioAsset createStreamAudioAsset(String audioId, Uri uri, float volume, java.util.Map<String, String> headers) {
+        try {
+            Class<?> streamAudioAssetClass = Class.forName("ee.forgr.audio.StreamAudioAsset");
+            java.lang.reflect.Constructor<?> constructor = streamAudioAssetClass.getConstructor(
+                NativeAudio.class,
+                String.class,
+                Uri.class,
+                float.class,
+                java.util.Map.class
+            );
+            return (AudioAsset) constructor.newInstance(this, audioId, uri, volume, headers);
+        } catch (ClassNotFoundException e) {
+            Log.e(TAG, "StreamAudioAsset class not found. HLS support is not included in this build.", e);
+            return null;
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to create StreamAudioAsset", e);
+            return null;
+        }
     }
 
     private void stopAudio(String audioId) throws Exception {

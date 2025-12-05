@@ -1,6 +1,6 @@
 {
   "name": "@capgo/native-audio",
-  "version": "7.10.0",
+  "version": "7.11.0",
   "description": "A native plugin for native audio engine",
   "license": "MPL-2.0",
   "main": "dist/plugin.cjs.js",
@@ -14,7 +14,8 @@
     "ios/Sources",
     "ios/Tests",
     "Package.swift",
-    "CapgoNativeAudio.podspec"
+    "CapgoNativeAudio.podspec",
+    "scripts/configure-dependencies.js"
   ],
   "author": "Martin Donadieu",
   "repository": {
@@ -33,6 +34,7 @@
     "native"
   ],
   "scripts": {
+    "capacitor:sync:after": "node scripts/configure-dependencies.js",
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
     "verify:ios": "xcodebuild -scheme CapgoNativeAudio -destination generic/platform=iOS",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
@@ -45,7 +47,8 @@
     "prettier": "prettier \"**/*.{css,html,ts,js,java}\" --plugin=prettier-plugin-java",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api NativeAudio --output-readme README.md --output-json dist/docs.json",
-    "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
+    "build": "npm run clean && npm run docgen && npm run build:scripts && tsc && rollup -c rollup.config.mjs",
+    "build:scripts": "tsc -p scripts/tsconfig.json",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build"

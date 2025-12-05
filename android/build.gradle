@@ -3,6 +3,10 @@ ext {
     androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.0'
     androidxJunitVersion = project.hasProperty('androidxJunitVersion') ? rootProject.ext.androidxJunitVersion : '1.2.1'
     androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
+
+    // Read HLS configuration from gradle.properties (set by hook script)
+    // Default to 'true' for backward compatibility
+    includeHls = project.findProperty('nativeAudio.hls.include') ?: 'true'
 }
 
 buildscript {
@@ -40,6 +44,16 @@ android {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
+
+    // Exclude StreamAudioAsset when HLS is disabled
+    // StreamAudioAsset depends on HlsMediaSource which is only available with media3-exoplayer-hls
+    sourceSets {
+        main {
+            if (includeHls != 'true') {
+                java.exclude '**/StreamAudioAsset.java'
+            }
+        }
+    }
 }
 
 repositories {
@@ -56,8 +70,15 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation 'androidx.media3:media3-exoplayer:1.8.0'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.5.1'
-    implementation 'androidx.media3:media3-session:1.5.1'
+
+    // HLS (m3u8) streaming support - optional dependency
+    // When disabled, reduces APK size by ~4MB
+    // Configure via capacitor.config.ts: plugins.NativeAudio.hls = false
+    if (includeHls == 'true') {
+        implementation 'androidx.media3:media3-exoplayer-hls:1.8.0'
+    }
+
+    implementation 'androidx.media3:media3-session:1.8.0'
     implementation 'androidx.media3:media3-transformer:1.5.1'
     implementation 'androidx.media3:media3-ui:1.5.1'
     implementation 'androidx.media3:media3-database:1.8.0'

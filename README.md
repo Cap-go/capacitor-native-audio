@@ -103,7 +103,40 @@ You can also consume the iOS implementation via Swift Package Manager. In Xcode 
 
 ## Configuration
 
-No configuration required for this plugin.
+### Optional HLS/m3u8 Streaming (Android)
+
+By default, HLS streaming support is **enabled** for backward compatibility. However, it adds approximately **4MB** to your Android APK size due to the `media3-exoplayer-hls` dependency.
+
+If you don't need HLS/m3u8 streaming support, you can disable it to reduce your APK size:
+
+```typescript
+// capacitor.config.ts
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.example.app',
+  appName: 'My App',
+  plugins: {
+    NativeAudio: {
+      hls: false  // Disable HLS to reduce APK size by ~4MB
+    }
+  }
+};
+
+export default config;
+```
+
+After changing the configuration, run:
+
+```bash
+npx cap sync
+```
+
+**Notes:**
+- iOS uses native AVPlayer for HLS, so this setting only affects Android
+- If HLS is disabled and you try to play an `.m3u8` file, you'll get a clear error message explaining how to enable it
+- The default is `hls: true` to maintain backward compatibility
+
 <docgen-config>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
 
