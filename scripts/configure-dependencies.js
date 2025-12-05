@@ -98,27 +98,52 @@ const colors = {
   cyan: '\x1b[36m',
   gray: '\x1b[90m',
 };
+/**
+ * Logs a message to stdout with an optional emoji prefix and optional ANSI color wrapping.
+ * @param {string} message - The text to log.
+ * @param {string} [emoji] - Optional emoji or prefix inserted before the message.
+ * @param {string} [color] - Optional ANSI color code to prepend; the console color is reset after the message.
+ */
 function log(message, emoji = '', color = '') {
   const emojiPart = emoji ? `${emoji} ` : '';
   const colorCode = color || colors.reset;
   const resetCode = color ? colors.reset : '';
   console.log(`${colorCode}${emojiPart}${message}${resetCode}`);
 }
+/**
+ * Log a success-level message prefixed with a green check mark.
+ * @param {string} message - The message to display.
+ */
 function logSuccess(message) {
   log(message, '✔', colors.green);
 }
+/**
+ * Log an error message to the console using the error style (red color and a cross emoji).
+ * @param {string} message - The message to log. 
+ */
 function logError(message) {
   log(message, '✖', colors.red);
 }
+/**
+ * Log an informational message with a blue info emoji.
+ * @param {string} message - The message to log.
+ */
 function logInfo(message) {
   log(message, 'ℹ', colors.blue);
 }
+/**
+ * Log a warning message using the warning emoji and yellow color.
+ */
 function logWarning(message) {
   log(message, '⚠', colors.yellow);
 }
 /**
- * Parse NativeAudio configuration from Capacitor config
- * Default: hls = true (for backward compatibility)
+ * Determine the NativeAudio HLS setting from the Capacitor configuration.
+ *
+ * Reads the CAPACITOR_CONFIG JSON (if available) and returns an object describing
+ * whether HLS should be included; defaults to true unless the config explicitly
+ * sets `plugins.NativeAudio.hls` to `false` or parsing fails.
+ * @returns {{hls: boolean}} An object with `hls`: `true` if HLS should be included, `false` otherwise.
  */
 function getConfig() {
   const defaultConfig = {
@@ -140,7 +165,8 @@ function getConfig() {
   }
 }
 /**
- * Log the current configuration status
+ * Display the NativeAudio plugin configuration and HLS inclusion status to the console.
+ * @param {{hls: boolean}} config - Configuration object; `hls` indicates whether HLS (m3u8) dependency will be included.
  */
 function logConfig(config) {
   log('\nNativeAudio configuration:', '', colors.bright);
@@ -159,8 +185,15 @@ function logConfig(config) {
 // Android: Gradle Configuration
 // ============================================================================
 /**
- * Write gradle.properties file for Android
- * Injects NativeAudio properties while preserving existing content
+ * Update android/gradle.properties to include the NativeAudio HLS configuration.
+ *
+ * Writes a NativeAudio properties section (including `nativeAudio.hls.include`) to
+ * android/gradle.properties, preserving existing content and removing any previously
+ * generated NativeAudio entries before writing the new section.
+ *
+ * @param {{hls: boolean}} config - Configuration object. `config.hls` controls the
+ *                                 `nativeAudio.hls.include` property: `true` to include
+ *                                 the HLS dependency, `false` to exclude it.
  */
 function configureAndroid(config) {
   logInfo('Configuring Android dependencies...');
@@ -229,14 +262,18 @@ function configureIOS() {
 // Web: No Configuration Needed
 // ============================================================================
 /**
- * Web platform doesn't need native dependency configuration
+ * Log that the Web platform requires no native dependency configuration.
  */
 function configureWeb() {
   logInfo('Web platform - no native dependency configuration needed');
 }
 // ============================================================================
 // Main Execution
-// ============================================================================
+/**
+ * Execute platform-specific configuration of the NativeAudio optional dependencies based on the current environment.
+ *
+ * Determines the effective configuration and runs the Android, iOS, or Web configuration path according to the PLATFORM environment; when PLATFORM is unknown or unset, logs a warning and applies the Android configuration as a fallback for backward compatibility.
+ */
 function main() {
   const config = getConfig();
   switch (PLATFORM) {

@@ -255,6 +255,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         );
     }
 
+    /**
+     * Plays a preloaded audio asset specified in the plugin call.
+     *
+     * @param call Plugin call containing the required `assetId` and an optional `time` (start position in seconds)
+     */
     @PluginMethod
     public void play(final PluginCall call) {
         this.getActivity().runOnUiThread(
@@ -267,6 +272,24 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         );
     }
 
+    /**
+     * Preloads a single audio asset (local file, remote URL, or public asset) and optionally plays it once.
+     *
+     * <p>The call may include the following keys in its data:
+     * <ul>
+     *   <li>`assetPath` (String) — path or URL to the audio resource (required).</li>
+     *   <li>`volume` (float) — playback volume, default 1.0.</li>
+     *   <li>`isUrl` (boolean) — true when `assetPath` is a URL or file URI, default false.</li>
+     *   <li>`time` (double) — start offset in seconds, default 0.0.</li>
+     *   <li>`deleteAfterPlay` (boolean) — if true and the source is a deletable file/URL, the source will be deleted after playback completes, default false.</li>
+     *   <li>`autoPlay` (boolean) — if true the asset will start playing immediately after preload, default true.</li>
+     * </ul>
+     *
+     * <p>When playback is started, a unique `assetId` is returned in the resolved result. The asset is unloaded
+     * automatically after completion; if `deleteAfterPlay` is true and applicable, the source file may be removed.
+     *
+     * @param call the plugin call containing preload/play options; resolves with an object containing the `assetId`
+     */
     @PluginMethod
     public void playOnce(final PluginCall call) {
         this.getActivity().runOnUiThread(
@@ -389,6 +412,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         );
     }
 
+    /**
+     * Finalizes a one-shot playback by unloading the completed asset, optionally deleting its local file, and emitting a completion event.
+     *
+     * @param completedAssetId the internal asset identifier for the completed one-shot playback
+     * @param assetPath the original asset path or URL provided when the asset was played
+     * @param deleteAfterPlay true to attempt deletion of the asset file after playback when the path is a file URI
+     * @param isUrl true if the asset was provided as a URL or file URI (used to determine deletion eligibility)
+     */
     private void handlePlayOnceCompletion(String completedAssetId, String assetPath, boolean deleteAfterPlay, boolean isUrl) {
         // Unload the asset
         try {
@@ -423,6 +454,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         dispatchComplete(completedAssetId);
     }
 
+    /**
+     * Retrieve the current playback position for a preloaded audio asset.
+     *
+     * Resolves the provided PluginCall with a JSObject containing the asset's current playback position under the key `currentTime`.
+     * Rejects the call if the `assetId` parameter is missing or if the specified asset has not been preloaded.
+     *
+     * @param call the PluginCall expected to contain the `assetId` identifying the audio asset
+     */
     @PluginMethod
     public void getCurrentTime(final PluginCall call) {
         try {
@@ -658,6 +697,16 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
+    /**
+     * Check whether a preloaded audio asset is currently playing.
+     *
+     * Resolves the call with the playing state for the requested asset.
+     *
+     * @param call the plugin call containing the required `assetId` parameter
+     * @returns `true` if the specified asset is currently playing, `false` otherwise
+     * @throws IllegalArgumentException if `assetId` is missing or invalid
+     * @throws IllegalStateException if the referenced asset is not loaded
+     */
     @PluginMethod
     public void isPlaying(final PluginCall call) {
         try {

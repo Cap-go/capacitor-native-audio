@@ -361,6 +361,16 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
+    /// Plays a preloaded audio asset or system sound identified by `assetId`.
+    /// 
+    /// Expects the plugin call to include:
+    /// - `assetId`: The identifier of a preloaded audio asset or system sound.
+    /// - `time` (optional): Playback start time in seconds; values less than 0 are treated as 0.
+    /// - `delay` (optional): Delay before playback in seconds; values less than 0 are treated as 0.
+    /// 
+    /// Activates the audio session if needed, starts playback (with optional fade behavior), and updates Now Playing information and playback state when notifications are enabled. If the specified asset is not found or the audio list is empty, the call is rejected.
+    /// - Parameters:
+    ///   - call: The Capacitor plugin call containing `assetId`, optional `time`, and optional `delay`.
     @objc func play(_ call: CAPPluginCall) {
         let audioId = call.getString(Constant.AssetIdKey) ?? ""
         let time = max(call.getDouble("time") ?? 0, 0) // Ensure non-negative time
@@ -409,6 +419,18 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
+    /// Preloads a single-use audio asset and optionally plays it immediately.
+    /// 
+    /// The call is resolved with a generated `assetId` for the one-shot asset; the asset is automatically unloaded after playback completes (and can be deleted if requested).
+    /// - Parameters:
+    ///   - call: The plugin call containing the following keys:
+    ///     - `assetPath` (String): Local file path, public folder resource name, or remote URL of the audio to play (required).
+    ///     - `volume` (Float): Playback volume between the plugin's min and max bounds (optional).
+    ///     - `isUrl` (Bool): When true, treats `assetPath` as a local file path even if it looks like a URL (optional).
+    ///     - `time` (Double): Start time in seconds (defaults to 0).
+    ///     - `deleteAfterPlay` (Bool): If true, deletes the source file after playback completes (optional).
+    ///     - `autoPlay` (Bool): If true, begins playback immediately after preload (defaults to true).
+    /// - Returns: A dictionary containing `assetId` — the generated identifier for the one-shot audio asset.
     @objc func playOnce(_ call: CAPPluginCall) {
         let assetPath = call.getString(Constant.AssetPathKey) ?? ""
         let volume = min(max(call.getFloat("volume") ?? Constant.DefaultVolume, Constant.MinVolume), Constant.MaxVolume)
@@ -541,6 +563,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
     
+    /// Handles cleanup after a one-shot playback completes.
+    /// 
+    /// Unloads any in-memory asset associated with `assetId`, deletes the underlying file at `assetPath` when `deleteAfterPlay` is true, and emits a `"complete"` event for the asset.
+    /// - Parameters:
+    ///   - assetId: The identifier of the played asset to unload and include in the completion event.
+    ///   - assetPath: The filesystem path or URL string of the asset file to delete when requested.
+    ///   - deleteAfterPlay: If `true`, deletes the file at `assetPath` after unloading the asset.
     private func handlePlayOnceCompletion(assetId: String, assetPath: String, deleteAfterPlay: Bool) {
         audioQueue.async(flags: .barrier) { [weak self] in
             guard let self = self else { return }
@@ -563,6 +592,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             self.notifyListeners("complete", data: ["assetId": assetId])
         }
     }    
+    /// Deletes the file at the specified filesystem path if it exists.
+    /// - Parameter path: The filesystem path of the file to remove. If the file does not exist no action is taken. Any deletion error is printed to the console.
     private func deleteFile(atPath path: String) {
         let fileManager = FileManager.default
         do {
@@ -574,6 +605,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
     
+    /// Retrieve the `AudioAsset` referenced by the plugin call's `assetId`.
+    /// - Parameter call: The plugin call containing an `assetId` (under `Constant.AssetIdKey`).
+    /// - Returns: The `AudioAsset` for the given `assetId`, or `nil` if no matching audio asset exists.
     @objc private func getAudioAsset(_ call: CAPPluginCall) -> AudioAsset? {
         var asset: AudioAsset?
         audioQueue.sync { // Read operations should use sync

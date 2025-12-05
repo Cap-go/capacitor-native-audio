@@ -48,6 +48,13 @@ const colors = {
   gray: '\x1b[90m',
 };
 
+/**
+ * Logs a message to the console with an optional leading emoji and optional color formatting.
+ *
+ * @param message - The text to log
+ * @param emoji - Optional emoji or symbol to prepend to the message
+ * @param color - Optional ANSI color code to apply to the message; if omitted the default/reset color is used
+ */
 function log(message: string, emoji = '', color = ''): void {
   const emojiPart = emoji ? `${emoji} ` : '';
   const colorCode = color || colors.reset;
@@ -55,18 +62,38 @@ function log(message: string, emoji = '', color = ''): void {
   console.log(`${colorCode}${emojiPart}${message}${resetCode}`);
 }
 
+/**
+ * Log a success message prefixed with a green checkmark.
+ *
+ * @param message - The text to log as a success message
+ */
 function logSuccess(message: string): void {
   log(message, '✔', colors.green);
 }
 
+/**
+ * Logs an error message prefixed with a red "✖" marker.
+ *
+ * @param message - The error text to log
+ */
 function logError(message: string): void {
   log(message, '✖', colors.red);
 }
 
+/**
+ * Logs an informational message prefixed with a blue "ℹ" icon.
+ *
+ * @param message - The message text to output as an informational log
+ */
 function logInfo(message: string): void {
   log(message, 'ℹ', colors.blue);
 }
 
+/**
+ * Logs a warning-styled message using the warning emoji and yellow color.
+ *
+ * @param message - Text to log as a warning
+ */
 function logWarning(message: string): void {
   log(message, '⚠', colors.yellow);
 }
@@ -80,8 +107,11 @@ interface NativeAudioConfig {
 }
 
 /**
- * Parse NativeAudio configuration from Capacitor config
- * Default: hls = true (for backward compatibility)
+ * Reads CAPACITOR_CONFIG and returns the NativeAudio configuration, defaulting HLS to enabled.
+ *
+ * If CAPACITOR_CONFIG is missing or cannot be parsed, returns the default configuration with HLS enabled.
+ *
+ * @returns The NativeAudioConfig with `hls` set to `true` if HLS should be included, `false` otherwise.
  */
 function getConfig(): NativeAudioConfig {
   const defaultConfig: NativeAudioConfig = {
@@ -107,7 +137,9 @@ function getConfig(): NativeAudioConfig {
 }
 
 /**
- * Log the current configuration status
+ * Print the NativeAudio HLS inclusion status and approximate APK size impact to the console.
+ *
+ * @param config - NativeAudio configuration whose `hls` flag indicates whether HLS (m3u8) is enabled
  */
 function logConfig(config: NativeAudioConfig): void {
   log('\nNativeAudio configuration:', '', colors.bright);
@@ -129,8 +161,11 @@ function logConfig(config: NativeAudioConfig): void {
 // ============================================================================
 
 /**
- * Write gradle.properties file for Android
- * Injects NativeAudio properties while preserving existing content
+ * Write or update android/gradle.properties to set whether the NativeAudio HLS dependency is included.
+ *
+ * Preserves existing non-NativeAudio properties and replaces any previously generated NativeAudio section.
+ *
+ * @param config - Configuration specifying whether HLS (m3u8) dependency should be included (`config.hls = true` enables it)
  */
 function configureAndroid(config: NativeAudioConfig): void {
   logInfo('Configuring Android dependencies...');
@@ -200,7 +235,7 @@ function configureAndroid(config: NativeAudioConfig): void {
 // ============================================================================
 
 /**
- * iOS platform - HLS is handled natively by AVPlayer
+ * Indicate that iOS requires no extra configuration for HLS because AVPlayer provides native support.
  */
 function configureIOS(): void {
   logInfo('iOS uses native AVPlayer for HLS - no additional configuration needed');
@@ -211,7 +246,9 @@ function configureIOS(): void {
 // ============================================================================
 
 /**
- * Web platform doesn't need native dependency configuration
+ * Indicate that the Web platform requires no native dependency configuration.
+ *
+ * Logs an informational message stating that no native dependency configuration is necessary for the web platform.
  */
 function configureWeb(): void {
   logInfo('Web platform - no native dependency configuration needed');
@@ -219,7 +256,14 @@ function configureWeb(): void {
 
 // ============================================================================
 // Main Execution
-// ============================================================================
+/**
+ * Orchestrates platform-specific configuration of NativeAudio optional dependencies.
+ *
+ * Reads the current NativeAudio configuration and applies the appropriate configuration
+ * for the detected Capacitor platform (`android`, `ios`, or `web`). If the platform is
+ * unknown or unspecified, defaults to configuring Android for backward compatibility.
+ * Progress and result messages are logged during the process.
+ */
 
 function main(): void {
   const config = getConfig();
