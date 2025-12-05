@@ -2,7 +2,7 @@ PODS:
   - Capacitor (7.4.4):
     - CapacitorCordova
   - CapacitorCordova (7.4.4)
-  - CapgoNativeAudio (7.9.7):
+  - CapgoNativeAudio (7.10.0):
     - Capacitor
 
 DEPENDENCIES:
@@ -19,9 +19,9 @@ EXTERNAL SOURCES:
     :path: "../../.."
 
 SPEC CHECKSUMS:
-  Capacitor: 358dd1c3fdd71d969547b17e159fd8a7736cb45f
+  Capacitor: 09d9ff8e9618e8c4b3cab2bbee34a17215dd2fef
   CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
-  CapgoNativeAudio: 0bdbaa22d2d422b0e0f8bc193a1af5ca90e41112
+  CapgoNativeAudio: 04cacb14d848cbac54f2ec94f77488b0e7881eed
 
 PODFILE CHECKSUM: e3c110127e571df6386e0052a9453a05d23695f6
 
