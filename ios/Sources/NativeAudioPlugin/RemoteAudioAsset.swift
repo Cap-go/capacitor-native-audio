@@ -93,6 +93,11 @@ public class RemoteAudioAsset: AudioAsset {
         notificationObservers = []
     }
 
+    /// Notifies listeners that this asset finished playing and invokes the optional completion callback if set.
+    /// 
+    /// Handle a player's end-of-playback by notifying listeners and invoking the optional completion callback.
+    /// Dispatches the notification on the owner's audio queue and sends a `complete` event containing the assetId.
+    /// - Parameter player: The `AVPlayer` instance that finished playback.
     func playerDidFinishPlaying(player: AVPlayer) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
@@ -100,6 +105,9 @@ public class RemoteAudioAsset: AudioAsset {
             self.owner?.notifyListeners("complete", data: [
                 "assetId": self.assetId
             ])
+
+            // Invoke completion callback if set
+            self.onComplete?()
         }
     }
 
@@ -176,6 +184,11 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
+    /// Stops playback on all player channels and resets them to the beginning.
+    /// 
+    /// Stops periodic current-time updates, pauses each `AVPlayer`, seeks each player to time zero,
+    /// sets each player's `actionAtItemEnd` to `.pause`, and resets `playIndex` to `0`.
+    /// The operations are dispatched on the owner's audio queue.
     override func stop() {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
@@ -196,6 +209,11 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
+    /// Configures all player channels to loop and starts playback for the current channel.
+    ///
+    /// Configures all player channels to loop playback and starts playback on the current channel.
+    /// 
+    /// Cleans existing end-of-playback observers, sets each player's end action to `.none`, and registers observers that seek the finished item back to the start and resume playback when it reaches its end. Seeks and starts the player at `playIndex`, and starts periodic current-time updates. This work is performed on the owner's audio queue.
     override func loop() {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
@@ -232,7 +250,12 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    private func cleanupNotificationObservers() {
+    /// Removes all NotificationCenter observers tracked by this asset and clears the internal observer list.
+    /// 
+    /// Removes all NotificationCenter observers tracked by this instance and clears the internal observer list.
+    /// 
+    /// This unregisters each observer previously added to NotificationCenter.default and resets `notificationObservers` to an empty array.
+    internal func cleanupNotificationObservers() {
         for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -416,7 +439,13 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    // Add helper method for parent class
+    /// Gradually adjusts the given player's volume from a start level to an end level over the configured fade duration.
+    /// 
+    /// The method stops any existing fade timer, sets the player's volume to `startVolume`, and schedules a `Timer` on the main run loop that increments the volume in steps determined by `FADESTEP` and `FADEDELAY`. When the ramp completes the player's volume is set to `endVolume` and the internal `fadeTimer` reference is cleared.
+    /// - Parameters:
+    ///   - startVolume: The initial volume level to apply before beginning the ramp (typically 0.0–1.0).
+    ///   - endVolume: The target volume level to reach at the end of the ramp (typically 0.0–1.0).
+    ///   - player: The `AVPlayer` whose `volume` property will be adjusted.
     private func startVolumeRamp(from startVolume: Float, to endVolume: Float, player: AVPlayer) {
         player.volume = startVolume
 

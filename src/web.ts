@@ -1,13 +1,13 @@
 import { WebPlugin } from '@capacitor/core';
 
 import { AudioAsset } from './audio-asset';
-import type { ConfigureOptions, PreloadOptions } from './definitions';
+import type { ConfigureOptions, PlayOnceOptions, PlayOnceResult, PreloadOptions } from './definitions';
 import { NativeAudio } from './definitions';
 
 export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private static readonly FILE_LOCATION: string = '';
   private static readonly AUDIO_ASSET_BY_ASSET_ID: Map<string, AudioAsset> = new Map<string, AudioAsset>();
-
+  private static readonly playOnceAssets: Set<string> = new Set<string>();
   constructor() {
     super();
   }
@@ -78,6 +78,73 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
     NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.set(options.assetId, new AudioAsset(audio));
   }
+
+  async playOnce(options: PlayOnceOptions): Promise<PlayOnceResult> {
+    // Generate a unique temporary asset ID
+    const assetId = `playOnce_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    NativeAudioWeb.playOnceAssets.add(assetId);
+
+    const autoPlay = options.autoPlay !== false; // Default to true
+    const deleteAfterPlay = options.deleteAfterPlay ?? false;
+
+    try {
+      // Preload the asset
+      await this.preload({
+        assetId,
+        assetPath: options.assetPath,
+        volume: options.volume,
+        isUrl: options.isUrl,
+      });
+
+      // Set up automatic cleanup on completion
+      const audio = this.getAudioAsset(assetId).audio;
+      const cleanupHandler = async () => {
+        try {
+          // Unload the asset
+          await this.unload({ assetId });
+          NativeAudioWeb.playOnceAssets.delete(assetId);
+
+          // Delete file if requested (Web can't actually delete files from disk)
+          // This is a no-op on web, but we keep the interface consistent
+          if (deleteAfterPlay) {
+            console.warn('[NativeAudio] deleteAfterPlay is not supported on web platform. File deletion is ignored.');
+          }
+        } catch (error) {
+          console.error('[NativeAudio] Error during playOnce cleanup:', error);
+        }
+      };
+
+      audio.addEventListener('ended', cleanupHandler, { once: true });
+
+      // Handle errors during playback - cleanup if play fails
+      audio.addEventListener(
+        'error',
+        () => {
+          cleanupHandler().catch((error) => {
+            console.error('[NativeAudio] Error during error cleanup:', error);
+          });
+        },
+        { once: true },
+      );
+
+      // Auto-play if requested
+      if (autoPlay) {
+        await this.play({ assetId });
+      }
+
+      return { assetId };
+    } catch (error) {
+      // Cleanup on failure
+      try {
+        await this.unload({ assetId });
+        NativeAudioWeb.playOnceAssets.delete(assetId);
+      } catch {
+        // Ignore cleanup errors
+      }
+      throw error;
+    }
+  }
+
   private onEnded(assetId: string): void {
     this.notifyListeners('complete', { assetId });
   }

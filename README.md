@@ -1,10 +1,22 @@
 # Native audio
 
- <a href="https://capgo.app/"><img src='https://raw.githubusercontent.com/Cap-go/capgo/main/assets/capgo_banner.png' alt='Capgo - Instant updates for capacitor'/></a>
+<a href="https://capgo.app/">
+  <img
+    src="https://raw.githubusercontent.com/Cap-go/capgo/main/assets/capgo_banner.png"
+    alt="Capgo - Instant updates for capacitor"
+  />
+</a>
 
 <div align="center">
-  <h2><a href="https://capgo.app/?ref=plugin_native_audio"> ➡️ Get Instant updates for your App with Capgo</a></h2>
-  <h2><a href="https://capgo.app/consulting/?ref=plugin_native_audio"> Missing a feature? We’ll build the plugin for you 💪</a></h2>
+  <h2>
+    <a href="https://capgo.app/?ref=plugin_native_audio"> ➡️ Get Instant updates for your App with Capgo</a>
+  </h2>
+  <h2>
+    <a href="https://capgo.app/consulting/?ref=plugin_native_audio">
+      {' '}
+      Missing a feature? We’ll build the plugin for you 💪
+    </a>
+  </h2>
 </div>
 
 <h3 align="center">Native Audio</h3>
@@ -118,9 +130,9 @@ const config: CapacitorConfig = {
   appName: 'My App',
   plugins: {
     NativeAudio: {
-      hls: false  // Disable HLS to reduce APK size by ~4MB
-    }
-  }
+      hls: false, // Disable HLS to reduce APK size by ~4MB
+    },
+  },
 };
 
 export default config;
@@ -133,14 +145,13 @@ npx cap sync
 ```
 
 **Notes:**
+
 - iOS uses native AVPlayer for HLS, so this setting only affects Android
 - If HLS is disabled and you try to play an `.m3u8` file, you'll get a clear error message explaining how to enable it
 - The default is `hls: true` to maintain backward compatibility
 
 <docgen-config>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
-
-
 
 </docgen-config>
 
@@ -150,6 +161,7 @@ npx cap sync
 | :------------- | :------ | :-- | :-- |
 | configure      | ✅      | ✅  | ❌  |
 | preload        | ✅      | ✅  | ✅  |
+| playOnce       | ✅      | ✅  | ✅  |
 | play           | ✅      | ✅  | ✅  |
 | pause          | ✅      | ✅  | ✅  |
 | resume         | ✅      | ✅  | ✅  |
@@ -170,27 +182,28 @@ npx cap sync
 You can display audio playback information in the system notification center. This is perfect for music players, podcast apps, and any app that plays audio in the background.
 
 > **⚠️ Important iOS Behavior**
-> 
+>
 > Enabling `showNotification: true` changes how your app's audio interacts with other apps on iOS:
-> 
+>
 > - **With notifications enabled** (showNotification: true): Your audio will **interrupt** other apps' audio (like Spotify, Apple Music, etc.). This is required for Now Playing controls to appear in Control Center and on the lock screen.
 > - **With notifications disabled** (showNotification: false): Your audio will **mix** with other apps' audio, allowing background music to continue playing.
-> 
+>
 > **When to use each:**
+>
 > - ✅ Use `showNotification: true` for: Music players, podcast apps, audiobook players (primary audio source)
 > - ❌ Use `showNotification: false` for: Sound effects, notification sounds, secondary audio where mixing is preferred
-> 
+>
 > See [Issue #202](https://github.com/Cap-go/capacitor-native-audio/issues/202) for technical details.
 
 **Step 1: Configure the plugin with notification support**
 
 ```typescript
-import { NativeAudio } from '@capgo/native-audio'
+import { NativeAudio } from '@capgo/native-audio';
 
 // Enable notification center display
 await NativeAudio.configure({
   showNotification: true,
-  background: true  // Also enable background playback
+  background: true, // Also enable background playback
 });
 ```
 
@@ -205,8 +218,8 @@ await NativeAudio.preload({
     title: 'My Song Title',
     artist: 'Artist Name',
     album: 'Album Name',
-    artworkUrl: 'https://example.com/artwork.jpg'  // Can be local or remote URL
-  }
+    artworkUrl: 'https://example.com/artwork.jpg', // Can be local or remote URL
+  },
 });
 ```
 
@@ -218,6 +231,7 @@ await NativeAudio.play({ assetId: 'song1' });
 ```
 
 The notification will:
+
 - Show the title, artist, and album information
 - Display the artwork/album art (if provided)
 - Include media controls (play/pause/stop buttons)
@@ -227,21 +241,101 @@ The notification will:
 
 **Media Controls:**
 Users can control playback directly from:
+
 - iOS: Control Center, Lock Screen, CarPlay
 - Android: Notification tray, Lock Screen, Android Auto
 
 The media control buttons automatically handle:
+
 - **Play** - Resumes paused audio
 - **Pause** - Pauses playing audio
 - **Stop** - Stops audio and clears the notification
 
 **Notes:**
+
 - All metadata fields are optional
 - Artwork can be a local file path or remote URL
 - The notification only appears when `showNotification: true` is set in configure()
 - ⚠️ **iOS:** Enabling notifications will interrupt other apps' audio (see warning above)
 - iOS: Uses MPNowPlayingInfoCenter with MPRemoteCommandCenter
 - Android: Uses MediaSession with NotificationCompat.MediaStyle
+
+### Play Once (Fire-and-Forget Audio)
+
+The `playOnce` method is designed for simple, one-shot audio playback that doesn't require manual state management. Perfect for notification sounds, UI feedback, and temporary audio files.
+
+**Key Features:**
+
+- 🔥 **Fire-and-forget**: No manual preload/unload needed
+- 🧹 **Auto-cleanup**: Asset automatically unloaded after playback
+- 🗑️ **File deletion**: Optional automatic file deletion for temp files
+- 🎮 **Manual control**: Returns assetId for optional manual control
+
+**Basic Usage:**
+
+```typescript
+import { NativeAudio } from '@capgo/native-audio';
+
+// Simple one-shot playback
+await NativeAudio.playOnce({
+  assetPath: 'audio/notification.mp3',
+});
+
+// With volume control
+await NativeAudio.playOnce({
+  assetPath: 'audio/beep.wav',
+  volume: 0.8,
+});
+
+// Remote audio with notification metadata
+await NativeAudio.playOnce({
+  assetPath: 'https://example.com/alert.mp3',
+  isUrl: true,
+  notificationMetadata: {
+    title: 'Alert Sound',
+    artist: 'My App',
+  },
+});
+```
+
+#### Advanced: Manual Control
+
+```typescript
+// Get assetId for manual control before auto-cleanup
+const { assetId } = await NativeAudio.playOnce({
+  assetPath: 'audio/long-track.mp3',
+  autoPlay: false, // Don't play immediately
+});
+
+// Now you can control it manually
+await NativeAudio.play({ assetId });
+await NativeAudio.pause({ assetId });
+await NativeAudio.stop({ assetId });
+
+// Asset will still auto-cleanup after playback completes
+```
+
+**Temporary File Cleanup:**
+
+```typescript
+// Automatically delete file after playback (useful for temp files)
+await NativeAudio.playOnce({
+  assetPath: 'file:///path/to/temp/recording.mp3',
+  isUrl: true,
+  deleteAfterPlay: true, // File deleted after playback completes
+});
+```
+
+**Comparison with regular play():**
+
+| Feature          | `playOnce()`    | `preload()` + `play()` + `unload()` |
+| ---------------- | --------------- | ----------------------------------- |
+| Preload          | ✅ Automatic    | ❌ Manual required                  |
+| Play             | ✅ Automatic    | ❌ Manual required                  |
+| Cleanup          | ✅ Automatic    | ❌ Manual required                  |
+| File deletion    | ✅ Optional     | ❌ Not supported                    |
+| State management | ✅ Minimal      | ❌ Full manual control              |
+| Best for         | One-shot sounds | Repeated playback, complex control  |
 
 ## Example app
 
@@ -383,8 +477,7 @@ Configure the audio player
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### preload(...)
 
@@ -400,8 +493,39 @@ Load an audio file
 
 **Since:** 5.0.0
 
---------------------
+---
 
+### playOnce(...)
+
+```typescript
+playOnce(options: PlayOnceOptions) => Promise<PlayOnceResult>
+```
+
+Play an audio file once with automatic cleanup. This method is designed for simple, single-shot audio playback such as notification sounds, UI feedback, or other short audio clips that don't require manual state management.
+
+**Key Features:**
+
+- **Fire-and-forget**: No need to manually preload, play, stop, or unload
+- **Auto-cleanup**: Asset is automatically unloaded after playback completes
+- **Optional file deletion**: Can delete local files after playback (useful for temp files)
+- **Returns assetId**: Can still control playback if needed (pause, stop, etc.)
+
+**Use Cases:**
+
+- Notification sounds
+- UI sound effects (button clicks, alerts)
+- Short audio clips that play once
+- Temporary audio files that should be cleaned up
+
+| Param         | Type                                                        |
+| ------------- | ----------------------------------------------------------- |
+| **`options`** | <code><a href="#playonceoptions">PlayOnceOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#playonceresult">PlayOnceResult</a>&gt;</code>
+
+**Since:** 7.11.0
+
+---
 
 ### isPreloaded(...)
 
@@ -419,8 +543,7 @@ Check if an audio file is preloaded
 
 **Since:** 6.1.0
 
---------------------
-
+---
 
 ### play(...)
 
@@ -436,8 +559,7 @@ Play an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### pause(...)
 
@@ -453,8 +575,7 @@ Pause an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### resume(...)
 
@@ -470,8 +591,7 @@ Resume an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### loop(...)
 
@@ -487,8 +607,7 @@ Stop an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### stop(...)
 
@@ -504,8 +623,7 @@ Stop an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### unload(...)
 
@@ -521,8 +639,7 @@ Unload an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### setVolume(...)
 
@@ -538,8 +655,7 @@ Set the volume of an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### setRate(...)
 
@@ -555,8 +671,7 @@ Set the rate of an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### setCurrentTime(...)
 
@@ -572,8 +687,7 @@ Set the current time of an audio file
 
 **Since:** 6.5.0
 
---------------------
-
+---
 
 ### getCurrentTime(...)
 
@@ -591,8 +705,7 @@ Get the current time of an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### getDuration(...)
 
@@ -610,8 +723,7 @@ Get the duration of an audio file
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### isPlaying(...)
 
@@ -629,8 +741,7 @@ Check if an audio file is playing
 
 **Since:** 5.0.0
 
---------------------
-
+---
 
 ### addListener('complete', ...)
 
@@ -650,8 +761,7 @@ Listen for complete event
 **Since:** 5.0.0
 return {@link CompletedEvent}
 
---------------------
-
+---
 
 ### addListener('currentTime', ...)
 
@@ -672,8 +782,7 @@ Emits every 100ms while audio is playing
 **Since:** 6.5.0
 return {@link CurrentTimeEvent}
 
---------------------
-
+---
 
 ### clearCache()
 
@@ -685,8 +794,7 @@ Clear the audio cache for remote audio files
 
 **Since:** 6.5.0
 
---------------------
-
+---
 
 ### getPluginVersion()
 
@@ -698,8 +806,7 @@ Get the native Capacitor plugin version
 
 **Returns:** <code>Promise&lt;{ version: string; }&gt;</code>
 
---------------------
-
+---
 
 ### deinitPlugin()
 
@@ -713,11 +820,9 @@ Use this when you need to ensure compatibility with other audio plugins
 
 **Since:** 7.7.0
 
---------------------
-
+---
 
 ### Interfaces
-
 
 #### ConfigureOptions
 
@@ -728,7 +833,6 @@ Use this when you need to ensure compatibility with other audio plugins
 | **`background`**       | <code>boolean</code> | Play the audio in the background                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | **`ignoreSilent`**     | <code>boolean</code> | Ignore silent mode, works only on iOS setting this will nuke other audio apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | **`showNotification`** | <code>boolean</code> | Show audio playback in the notification center (iOS and Android) When enabled, displays audio metadata (title, artist, album, artwork) in the system notification and Control Center (iOS) or lock screen. **Important iOS Behavior:** Enabling this option changes the audio session category to `.playback` with `.default` mode, which means your app's audio will **interrupt** other apps' audio (like background music from Spotify, Apple Music, etc.) instead of mixing with it. This is required for the Now Playing info to appear in Control Center and on the lock screen. **Trade-offs:** - `showNotification: true` → Shows Now Playing controls, but interrupts other audio - `showNotification: false` → Audio mixes with other apps, but no Now Playing controls Use this when your app is the primary audio source (music players, podcast apps, etc.). Disable this for secondary audio like sound effects or notification sounds where mixing with background music is preferred. |
-
 
 #### PreloadOptions
 
@@ -741,7 +845,6 @@ Use this when you need to ensure compatibility with other audio plugins
 | **`isUrl`**                | <code>boolean</code>                                                  | Is the audio file a URL, pass true if assetPath is a `file://` url or a streaming URL (m3u8)                                                                                                                                                                                                    |        |
 | **`notificationMetadata`** | <code><a href="#notificationmetadata">NotificationMetadata</a></code> | Metadata to display in the notification center when audio is playing. Only used when `showNotification: true` is set in `configure()`. See {@link <a href="#configureoptions">ConfigureOptions.showNotification</a>} for important details about how this affects audio mixing behavior on iOS. |        |
 | **`headers`**              | <code><a href="#record">Record</a>&lt;string, string&gt;</code>       | Custom HTTP headers to include when fetching remote audio files. Only used when isUrl is true and assetPath is a remote URL (http/https). Example: { 'x-api-key': 'abc123', 'Authorization': 'Bearer token' }                                                                                   | 7.10.0 |
-
 
 #### NotificationMetadata
 
@@ -759,6 +862,23 @@ behavior details about audio mixing on iOS.
 | **`album`**      | <code>string</code> | The album name to display in the notification center  |
 | **`artworkUrl`** | <code>string</code> | URL or local path to the artwork/album art image      |
 
+#### PlayOnceOptions
+
+| Prop                       | Type                                                                  | Description                                                                                                                                                                                                                                                                                     | Default            | Since  |
+| -------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------ |
+| **`assetPath`**            | <code>string</code>                                                   | Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://) Supported formats: - MP3, WAV (all platforms) - M3U8/HLS streams (iOS and Android)                                                                                                           |                    |        |
+| **`volume`**               | <code>number</code>                                                   | Volume of the audio, between 0.1 and 1.0                                                                                                                                                                                                                                                        | <code>1.0</code>   |        |
+| **`isUrl`**                | <code>boolean</code>                                                  | Is the audio file a URL, pass true if assetPath is a `file://` url or a streaming URL (m3u8)                                                                                                                                                                                                    | <code>false</code> |        |
+| **`autoPlay`**             | <code>boolean</code>                                                  | Automatically start playback after loading                                                                                                                                                                                                                                                      | <code>true</code>  |        |
+| **`deleteAfterPlay`**      | <code>boolean</code>                                                  | Delete the audio file from disk after playback completes. Only works for local files (file:// URLs), ignored for remote URLs                                                                                                                                                                    | <code>false</code> | 7.11.0 |
+| **`notificationMetadata`** | <code><a href="#notificationmetadata">NotificationMetadata</a></code> | Metadata to display in the notification center when audio is playing. Only used when `showNotification: true` is set in `configure()`. See {@link <a href="#configureoptions">ConfigureOptions.showNotification</a>} for important details about how this affects audio mixing behavior on iOS. |                    | 7.11.0 |
+| **`headers`**              | <code><a href="#record">Record</a>&lt;string, string&gt;</code>       | Custom HTTP headers to include when fetching remote audio files. Only used when isUrl is true and assetPath is a remote URL (http/https). Example: { 'x-api-key': 'abc123', 'Authorization': 'Bearer token' }                                                                                   |                    | 7.10.0 |
+
+#### PlayOnceResult
+
+| Prop          | Type                | Description                                                                                                                |
+| ------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **`assetId`** | <code>string</code> | The internally generated asset ID for this playback. Can be used to control playback (pause, stop, etc.) before completion |
 
 #### Assets
 
@@ -766,20 +886,17 @@ behavior details about audio mixing on iOS.
 | ------------- | ------------------- | --------------------------------------- |
 | **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file |
 
-
 #### PluginListenerHandle
 
 | Prop         | Type                                      |
 | ------------ | ----------------------------------------- |
 | **`remove`** | <code>() =&gt; Promise&lt;void&gt;</code> |
 
-
 #### CompletedEvent
 
 | Prop          | Type                | Description                | Since |
 | ------------- | ------------------- | -------------------------- | ----- |
 | **`assetId`** | <code>string</code> | Emit when a play completes | 5.0.0 |
-
 
 #### CurrentTimeEvent
 
@@ -788,25 +905,27 @@ behavior details about audio mixing on iOS.
 | **`currentTime`** | <code>number</code> | Current time of the audio in seconds | 6.5.0 |
 | **`assetId`**     | <code>string</code> | Asset Id of the audio                | 6.5.0 |
 
-
 ### Type Aliases
-
 
 #### Record
 
 Construct a type with a set of properties K of type T
 
-<code>{ [P in K]: T; }</code>
-
+<code>{
+ [P in K]: T;
+ }</code>
 
 #### CompletedListener
 
-<code>(state: <a href="#completedevent">CompletedEvent</a>): void</code>
-
+<code>
+  (state: <a href="#completedevent">CompletedEvent</a>): void
+</code>
 
 #### CurrentTimeListener
 
-<code>(state: <a href="#currenttimeevent">CurrentTimeEvent</a>): void</code>
+<code>
+  (state: <a href="#currenttimeevent">CurrentTimeEvent</a>): void
+</code>
 
 </docgen-api>
 

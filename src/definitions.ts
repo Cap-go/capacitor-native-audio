@@ -120,6 +120,66 @@ export interface NotificationMetadata {
   artworkUrl?: string;
 }
 
+export interface PlayOnceOptions {
+  /**
+   * Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://)
+   * Supported formats:
+   * - MP3, WAV (all platforms)
+   * - M3U8/HLS streams (iOS and Android)
+   */
+  assetPath: string;
+  /**
+   * Volume of the audio, between 0.1 and 1.0
+   * @default 1.0
+   */
+  volume?: number;
+  /**
+   * Is the audio file a URL, pass true if assetPath is a `file://` url
+   * or a streaming URL (m3u8)
+   * @default false
+   */
+  isUrl?: boolean;
+  /**
+   * Automatically start playback after loading
+   * @default true
+   */
+  autoPlay?: boolean;
+  /**
+   * Delete the audio file from disk after playback completes
+   * Only works for local files (file:// URLs), ignored for remote URLs
+   * @default false
+   * @since 7.11.0
+   */
+  deleteAfterPlay?: boolean;
+  /**
+   * Metadata to display in the notification center when audio is playing.
+   * Only used when `showNotification: true` is set in `configure()`.
+   *
+   * See {@link ConfigureOptions.showNotification} for important details about
+   * how this affects audio mixing behavior on iOS.
+   *
+   * @see NotificationMetadata
+   * @since 7.10.0
+   */
+  notificationMetadata?: NotificationMetadata;
+  /**
+   * Custom HTTP headers to include when fetching remote audio files.
+   * Only used when isUrl is true and assetPath is a remote URL (http/https).
+   * Example: { 'x-api-key': 'abc123', 'Authorization': 'Bearer token' }
+   *
+   * @since 7.10.0
+   */
+  headers?: Record<string, string>;
+}
+
+export interface PlayOnceResult {
+  /**
+   * The internally generated asset ID for this playback
+   * Can be used to control playback (pause, stop, etc.) before completion
+   */
+  assetId: string;
+}
+
 export interface PreloadOptions {
   /**
    * Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://)
@@ -194,6 +254,55 @@ export interface NativeAudio {
    * @returns
    */
   preload(options: PreloadOptions): Promise<void>;
+  /**
+   * Play an audio file once with automatic cleanup
+   *
+   * Method designed for simple, single-shot audio playback,
+   * such as notification sounds, UI feedback, or other short audio clips
+   * that don't require manual state management.
+   *
+   * **Key Features:**
+   * - **Fire-and-forget**: No need to manually preload, play, stop, or unload
+   * - **Auto-cleanup**: Asset is automatically unloaded after playback completes
+   * - **Optional file deletion**: Can delete local files after playback (useful for temp files)
+   * - **Returns assetId**: Can still control playback if needed (pause, stop, etc.)
+   *
+   * **Use Cases:**
+   * - Notification sounds
+   * - UI sound effects (button clicks, alerts)
+   * - Short audio clips that play once
+   * - Temporary audio files that should be cleaned up
+   *
+   * **Comparison with regular play():**
+   * - `play()`: Requires manual preload, play, and unload steps
+   * - `playOnce()`: Handles everything automatically with a single call
+   *
+   * @example
+   * ```typescript
+   * // Simple one-shot playback
+   * await NativeAudio.playOnce({ assetPath: 'audio/notification.mp3' });
+   *
+   * // Play and delete the file after completion
+   * await NativeAudio.playOnce({
+   *   assetPath: 'file:///path/to/temp/audio.mp3',
+   *   isUrl: true,
+   *   deleteAfterPlay: true
+   * });
+   *
+   * // Get the assetId to control playback
+   * const { assetId } = await NativeAudio.playOnce({
+   *   assetPath: 'audio/long-track.mp3',
+   *   autoPlay: true
+   * });
+   * // Later, you can stop it manually if needed
+   * await NativeAudio.stop({ assetId });
+   * ```
+   *
+   * @since 7.11.0
+   * @param options {@link PlayOnceOptions}
+   * @returns {Promise<PlayOnceResult>} Object containing the generated assetId
+   */
+  playOnce(options: PlayOnceOptions): Promise<PlayOnceResult>;
   /**
    * Check if an audio file is preloaded
    *

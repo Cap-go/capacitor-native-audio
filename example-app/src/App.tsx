@@ -422,6 +422,76 @@ const App = () => {
       </section>
 
       <section className="panel">
+        <h2>Play Once (Automatic Lifecycle)</h2>
+        <p className="asset-description">
+          The <code>playOnce</code> method automatically handles preload, play, and cleanup.
+          Perfect for one-shot sounds like notifications or sound effects.
+        </p>
+        <div className="actions">
+          <button 
+            type="button" 
+            onClick={async () => {
+              try {
+                setStatusMessage('Playing once (local)...');
+                const result = await NativeAudio.playOnce({ 
+                  assetPath: 'audio/beep.wav',
+                  volume: 0.8
+                });
+                setStatusMessage(`Playing once with assetId: ${result.assetId}. Will auto-cleanup on completion.`);
+              } catch (error) {
+                setErrorMessage(normalizeError(error));
+              }
+            }}
+          >
+            Play Once (Local)
+          </button>
+          <button 
+            type="button" 
+            onClick={async () => {
+              try {
+                setStatusMessage('Playing once (remote)...');
+                const result = await NativeAudio.playOnce({ 
+                  assetPath: 'https://samplelib.com/lib/preview/mp3/sample-3s.mp3',
+                  isUrl: true,
+                  volume: 0.8,
+                  notificationMetadata: {
+                    title: 'Play Once Demo',
+                    artist: 'Native Audio',
+                    album: 'Automatic Lifecycle'
+                  }
+                });
+                setStatusMessage(`Playing once with assetId: ${result.assetId}. Will auto-cleanup on completion.`);
+              } catch (error) {
+                setErrorMessage(normalizeError(error));
+              }
+            }}
+          >
+            Play Once (Remote)
+          </button>
+          <button 
+            type="button" 
+            onClick={async () => {
+              try {
+                setStatusMessage('Playing once without auto-play...');
+                const result = await NativeAudio.playOnce({ 
+                  assetPath: 'audio/beep.wav',
+                  autoPlay: false
+                });
+                setStatusMessage(`Preloaded with assetId: ${result.assetId}. Not auto-playing. You can manually play it.`);
+                // Asset is already preloaded, play immediately
+                await NativeAudio.play({ assetId: result.assetId });
+                setStatusMessage(`Manually started playback for ${result.assetId}. Will auto-cleanup on completion.`);
+              } catch (error) {
+                setErrorMessage(normalizeError(error));
+              }
+            }}
+          >
+            Play Once (Manual Control)
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
         <h2>Playback Status</h2>
         <ul className="status-list">
           <li>

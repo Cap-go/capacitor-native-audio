@@ -20,6 +20,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     var initialVolume: Float = 1.0
     var fadeDelay: Float = 1.0
     weak var owner: NativeAudio?
+    var onComplete: (() -> Void)?
 
     // Constants for fade effect
     let FADESTEP: Float = 0.05
@@ -417,10 +418,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    /**
-     * Set the playback rate for all audio channels
-     * - Parameter rate: Playback rate (0.5-2.0 is typical range)
-     */
+    /// Sets the playback rate for every channel, clamping the provided value to the allowed range before applying it.
+    /// - Parameters:
+    ///   - rate: Playback rate multiplier; the value is clamped to the asset's allowed rate range and applied to all channels.
     func setRate(rate: NSNumber!) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
@@ -433,9 +433,16 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    /**
-     * AVAudioPlayerDelegate method called when playback finishes
-     */
+    /// Handles an AVAudioPlayer finishing playback by notifying listeners, invoking the public completion callback, and forwarding the completion to the owner.
+    /// 
+    /// This is called when a player finishes playing; the notifications and callback are dispatched on the audio queue. Notifications are sent to listeners with the asset's `assetId`, then `onComplete` is invoked if set, and finally the event is forwarded to the owner.
+    /// - Parameters:
+    ///   - player: The `AVAudioPlayer` instance that finished playback.
+    /// Handle an AVAudioPlayer finishing playback by notifying listeners, invoking the optional `onComplete` callback, and forwarding the completion to the owner.
+    /// - Note: The handler's work is dispatched on the audio queue.
+    /// - Parameters:
+    ///   - player: The `AVAudioPlayer` instance that finished playback.
+    ///   - flag: `true` if playback finished successfully, `false` otherwise.
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self = self else { return }
@@ -443,6 +450,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
             self.owner?.notifyListeners("complete", data: [
                 "assetId": self.assetId
             ])
+
+            // Invoke completion callback if set
+            self.onComplete?()
 
             // Notify the owner that this player finished
             // The owner will check if any other assets are still playing
@@ -497,6 +507,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         }
     }
 
+    /// Stops and clears the periodic current-time update timer, ensuring invalidation occurs on the main thread.
+    /// 
+    /// This method is safe to call from any thread; if not currently on the main thread the invalidation is dispatched to the main queue.
     internal func stopCurrentTimeUpdates() {
         if Thread.isMainThread {
             currentTimeTimer?.invalidate()
