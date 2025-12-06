@@ -310,6 +310,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                             volume,
                                             null
                                         );
+                                        streamAudioAsset.setCompletionListener((completedAssetId) -> {
+                                            handlePlayOnceCompletion(completedAssetId, assetPath, deleteAfterPlay, isUrl);
+                                        });
                                         audioAssetList.put(audioId, streamAudioAsset);
                                     } else {
                                         // Regular remote audio
