@@ -674,6 +674,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 AudioAsset asset = audioAssetList.get(audioId);
                 if (asset != null) {
                     call.resolve(new JSObject().put("isPlaying", asset.isPlaying()));
+                } else {
+                    call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
                 }
             } else {
                 call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
