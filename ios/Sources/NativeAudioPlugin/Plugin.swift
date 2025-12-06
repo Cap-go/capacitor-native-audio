@@ -473,10 +473,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     self.audioList[audioId] = remoteAudioAsset
                     
                     // Set up completion handler for remote asset
-                    if let remoteAsset = remoteAudioAsset as? RemoteAudioAsset {
-                        remoteAsset.completion = { [weak self] completedAssetId in
-                            self?.handlePlayOnceCompletion(assetId: completedAssetId, assetPath: assetPath, deleteAfterPlay: deleteAfterPlay)
-                        }
+                    remoteAudioAsset.completion = { [weak self] completedAssetId in
+                        self?.handlePlayOnceCompletion(assetId: completedAssetId, assetPath: assetPath, deleteAfterPlay: deleteAfterPlay)
                     }
                     
                     if autoPlay {
