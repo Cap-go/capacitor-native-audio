@@ -383,7 +383,7 @@ NativeAudio.playOnce({
   isUrl: false, // Set to true if assetPath is a remote URL
   volume: 0.8, // Optional: Set volume (0.0 to 1.0)
   autoPlay: true, // Optional: Start playing as soon as ready (default: true)
-  time: 0, // Optional: Start time in milliseconds (default: 0)
+  time: 0, // Optional: Start time in seconds (default: 0)
   deleteAfterPlay: false, // Optional: For file-based assets, delete the file after playback (default: false)
 })
 .then(result => {
@@ -870,7 +870,9 @@ behavior details about audio mixing on iOS.
 
 Construct a type with a set of properties K of type T
 
-<code>{ [P in K]: T; }</code>
+<code>{
+ [P in K]: T;
+ }</code>
 
 
 #### CompletedListener
