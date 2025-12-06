@@ -412,7 +412,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     @objc func playOnce(_ call: CAPPluginCall) {
         let assetPath = call.getString(Constant.AssetPathKey) ?? ""
         let volume = min(max(call.getFloat("volume") ?? Constant.DefaultVolume, Constant.MinVolume), Constant.MaxVolume)
-        var isLocalUrl = call.getBool("isUrl") ?? false
+        var isUrl = call.getBool("isUrl") ?? false
         let time = max(call.getDouble("time") ?? 0, 0)
         let deleteAfterPlay = call.getBool("deleteAfterPlay") ?? false
         let autoPlay = call.getBool("autoPlay") ?? true
