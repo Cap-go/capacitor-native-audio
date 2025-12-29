@@ -75,7 +75,7 @@ dependencies {
     // When disabled, reduces APK size by ~4MB
     // Configure via capacitor.config.ts: plugins.NativeAudio.hls = false
     if (includeHls == 'true') {
-        implementation 'androidx.media3:media3-exoplayer-hls:1.8.0'
+        implementation 'androidx.media3:media3-exoplayer-hls:1.9.0'
     }
 
     implementation 'androidx.media3:media3-session:1.8.0'
