@@ -856,7 +856,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     }
                 }
 
-                if (assetPath.endsWith(".m3u8")) {
+                if (isHlsUrl(assetPath)) {
                     // HLS Stream - check if HLS support is available
                     if (!HlsAvailabilityChecker.isHlsAvailable()) {
                         throw new Exception(
@@ -1062,6 +1062,32 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     private boolean isStringValid(String value) {
         return (value != null && !value.isEmpty() && !value.equals("null"));
+    }
+
+    /**
+     * Check if the given URL is an HLS stream by examining the URL path.
+     * This handles URLs with query parameters correctly.
+     *
+     * @param assetPath The URL or path to check
+     * @return true if the URL path ends with .m3u8, false otherwise
+     */
+    private boolean isHlsUrl(String assetPath) {
+        if (assetPath == null || assetPath.isEmpty()) {
+            return false;
+        }
+
+        try {
+            Uri uri = Uri.parse(assetPath);
+            String path = uri.getPath();
+            if (path != null) {
+                return path.toLowerCase().endsWith(".m3u8");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed to parse URL for HLS detection: " + assetPath, e);
+        }
+
+        // Fallback: check if the URL contains .m3u8 followed by nothing or query params
+        return assetPath.toLowerCase().contains(".m3u8");
     }
 
     /**
