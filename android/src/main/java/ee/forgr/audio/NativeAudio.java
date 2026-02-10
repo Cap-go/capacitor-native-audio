@@ -1380,7 +1380,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         float scale = Math.min((float) maxSize / bitmap.getWidth(), (float) maxSize / bitmap.getHeight());
                         int newWidth = Math.round(bitmap.getWidth() * scale);
                         int newHeight = Math.round(bitmap.getHeight() * scale);
-                        bitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+                        bitmap.recycle(); // Free memory from original bitmap
+                        bitmap = scaledBitmap;
                     }
                 }
 
