@@ -351,12 +351,15 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     return
                 }
 
-                asset.setCurrentTime(time: positionEvent.positionTime)
+                // Validate seek position against duration
+                let duration = asset.getDuration()
+                let validatedPosition = min(positionEvent.positionTime, duration)
+                asset.setCurrentTime(time: validatedPosition)
 
                 // Notify JavaScript layer
                 self.notifyListeners("seek", data: [
                     "assetId": assetId,
-                    "position": positionEvent.positionTime
+                    "position": validatedPosition
                 ])
             }
             return .success

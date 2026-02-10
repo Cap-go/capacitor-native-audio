@@ -1339,7 +1339,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
                         try {
                             if (asset != null) {
-                                double newTime = pos / 1000.0; // Convert milliseconds to seconds
+                                double duration = asset.getDuration();
+                                // Validate seek position against duration
+                                double newTime = Math.min(pos / 1000.0, duration); // Convert milliseconds to seconds and clamp
                                 asset.setCurrentTime(newTime);
 
                                 // Notify JavaScript layer
@@ -1348,7 +1350,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                 ret.put("position", newTime);
                                 notifyListeners("seek", ret);
 
-                                updatePlaybackStateWithPosition(PlaybackStateCompat.STATE_PLAYING, pos);
+                                updatePlaybackStateWithPosition(PlaybackStateCompat.STATE_PLAYING, (long) (newTime * 1000));
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error seeking from media session", e);
