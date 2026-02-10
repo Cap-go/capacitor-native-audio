@@ -1421,15 +1421,15 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         intent.setPackage(getContext().getPackageName());
         
         // Create a key event for the action
-        android.view.KeyEvent keyEvent = null;
+        KeyEvent keyEvent = null;
         if (action == PlaybackStateCompat.ACTION_PLAY) {
-            keyEvent = new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PLAY);
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY);
         } else if (action == PlaybackStateCompat.ACTION_PAUSE) {
-            keyEvent = new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_PAUSE);
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE);
         } else if (action == PlaybackStateCompat.ACTION_REWIND) {
-            keyEvent = new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_REWIND);
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_REWIND);
         } else if (action == PlaybackStateCompat.ACTION_FAST_FORWARD) {
-            keyEvent = new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD);
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD);
         }
         
         if (keyEvent != null) {
