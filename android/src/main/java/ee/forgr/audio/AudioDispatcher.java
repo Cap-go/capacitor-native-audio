@@ -15,7 +15,8 @@ import android.os.Build;
 import android.util.Log;
 
 public class AudioDispatcher
-    implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnSeekCompleteListener {
+    implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnSeekCompleteListener
+{
 
     private final String TAG = "AudioDispatcher";
     private final MediaPlayer mediaPlayer;
