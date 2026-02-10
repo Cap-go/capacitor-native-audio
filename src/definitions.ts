@@ -507,7 +507,10 @@ export interface NativeAudio {
    * @since 8.3.0
    * return {@link PlaybackStateChangeEvent}
    */
-  addListener(eventName: 'playbackStateChange', listenerFunc: PlaybackStateChangeListener): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: 'playbackStateChange',
+    listenerFunc: PlaybackStateChangeListener,
+  ): Promise<PluginListenerHandle>;
   /**
    * Listen for seek events from external controls
    * Emitted when user scrubs the timeline from lock screen, Control Center, or notification.

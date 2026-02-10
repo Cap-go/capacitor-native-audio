@@ -1280,7 +1280,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
                 @Override
                 public void onRewind() {
-                    if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId) && skipBackwardInterval > 0) {
+                    if (
+                        currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId) && skipBackwardInterval > 0
+                    ) {
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
                         try {
                             if (asset != null) {
@@ -1440,10 +1442,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             notificationBuilder.addAction(
                 android.R.drawable.ic_media_rew,
                 "Rewind " + skipBackwardInterval + "s",
-                androidx.media.session.MediaButtonReceiver.buildMediaButtonPendingIntent(
-                    getContext(),
-                    PlaybackStateCompat.ACTION_REWIND
-                )
+                androidx.media.session.MediaButtonReceiver.buildMediaButtonPendingIntent(getContext(), PlaybackStateCompat.ACTION_REWIND)
             );
             compactViewActions[compactViewIndex++] = actionIndex++;
         }
@@ -1453,19 +1452,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             notificationBuilder.addAction(
                 android.R.drawable.ic_media_pause,
                 "Pause",
-                androidx.media.session.MediaButtonReceiver.buildMediaButtonPendingIntent(
-                    getContext(),
-                    PlaybackStateCompat.ACTION_PAUSE
-                )
+                androidx.media.session.MediaButtonReceiver.buildMediaButtonPendingIntent(getContext(), PlaybackStateCompat.ACTION_PAUSE)
             );
         } else {
             notificationBuilder.addAction(
                 android.R.drawable.ic_media_play,
                 "Play",
-                androidx.media.session.MediaButtonReceiver.buildMediaButtonPendingIntent(
-                    getContext(),
-                    PlaybackStateCompat.ACTION_PLAY
-                )
+                androidx.media.session.MediaButtonReceiver.buildMediaButtonPendingIntent(getContext(), PlaybackStateCompat.ACTION_PLAY)
             );
         }
         compactViewActions[compactViewIndex++] = actionIndex++;
@@ -1484,8 +1477,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
 
         // Set media style with appropriate compact view actions
-        androidx.media.app.NotificationCompat.MediaStyle mediaStyle = new androidx.media.app.NotificationCompat.MediaStyle()
-            .setMediaSession(mediaSession.getSessionToken());
+        androidx.media.app.NotificationCompat.MediaStyle mediaStyle =
+            new androidx.media.app.NotificationCompat.MediaStyle().setMediaSession(mediaSession.getSessionToken());
 
         // Only show actions that were added
         if (compactViewIndex > 0) {
