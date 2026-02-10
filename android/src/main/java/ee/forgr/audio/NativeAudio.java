@@ -1374,15 +1374,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 // Resize to optimal notification size if the bitmap is too large
                 // Android notifications typically display artwork at around 128-256dp
                 // We target 512px as a good balance between quality and memory usage
-                if (bitmap != null) {
+                if (bitmap != null && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
                     int maxSize = 512;
                     if (bitmap.getWidth() > maxSize || bitmap.getHeight() > maxSize) {
                         float scale = Math.min((float) maxSize / bitmap.getWidth(), (float) maxSize / bitmap.getHeight());
                         int newWidth = Math.round(bitmap.getWidth() * scale);
                         int newHeight = Math.round(bitmap.getHeight() * scale);
                         Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
-                        bitmap.recycle(); // Free memory from original bitmap
-                        bitmap = scaledBitmap;
+                        if (scaledBitmap != null) {
+                            bitmap.recycle(); // Free memory from original bitmap
+                            bitmap = scaledBitmap;
+                        }
                     }
                 }
 
