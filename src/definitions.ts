@@ -92,6 +92,30 @@ export interface ConfigureOptions {
    */
   showNotification?: boolean;
   /**
+   * Configure the skip interval (in seconds) for the iOS Control Center skip forward/backward buttons.
+   * This controls how many seconds to skip when the user presses the skip buttons in Control Center.
+   *
+   * **iOS Only**: This setting only applies when `showNotification: true` is enabled, as skip buttons
+   * only appear in Control Center when Now Playing info is displayed.
+   *
+   * **Skip Button Behavior:**
+   * - Skip Forward: Seeks forward by the specified interval (or to end of track if less time remains)
+   * - Skip Backward: Seeks backward by the specified interval (or to start if less time has elapsed)
+   * - Timeline Scrubbing: Allows direct seeking via the timeline slider in Control Center
+   *
+   * @default 15.0
+   * @platform iOS
+   * @since 8.3.0
+   * @example
+   * ```typescript
+   * await NativeAudio.configure({
+   *   showNotification: true,
+   *   skipInterval: 30  // Skip 30 seconds forward/backward
+   * });
+   * ```
+   */
+  skipInterval?: number;
+  /**
    * Enable background audio playback (Android only)
    *
    * When enabled, audio will continue playing when the app is backgrounded or the screen is locked.
