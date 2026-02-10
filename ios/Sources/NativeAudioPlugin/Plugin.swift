@@ -298,14 +298,11 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 }
 
                 let currentTime = asset.getCurrentTime()
-                let newTime = currentTime + skipEvent.interval
+                let duration = asset.getDuration()
+                let newTime = min(currentTime + skipEvent.interval, duration)
                 asset.setCurrentTime(time: newTime)
 
-                // Notify JavaScript layer
-                self.notifyListeners("playbackStateChange", data: [
-                    "assetId": assetId,
-                    "state": "playing"
-                ])
+                // Notify JavaScript layer of seek event only
                 self.notifyListeners("seek", data: [
                     "assetId": assetId,
                     "position": newTime
@@ -332,11 +329,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 let newTime = max(0, currentTime - skipEvent.interval)
                 asset.setCurrentTime(time: newTime)
 
-                // Notify JavaScript layer
-                self.notifyListeners("playbackStateChange", data: [
-                    "assetId": assetId,
-                    "state": "playing"
-                ])
+                // Notify JavaScript layer of seek event only
                 self.notifyListeners("seek", data: [
                     "assetId": assetId,
                     "position": newTime
@@ -369,29 +362,14 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             return .success
         }
 
-        // Configure skip intervals
-        if skipForwardInterval > 0 {
-            commandCenter.skipForwardCommand.isEnabled = true
-            commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForwardInterval)]
-        } else {
-            commandCenter.skipForwardCommand.isEnabled = false
-        }
-
-        if skipBackwardInterval > 0 {
-            commandCenter.skipBackwardCommand.isEnabled = true
-            commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBackwardInterval)]
-        } else {
-            commandCenter.skipBackwardCommand.isEnabled = false
-        }
-
-        // Enable seek command
-        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        // Configure skip intervals and seek command
+        updateRemoteCommandCenterConfiguration()
     }
     // swiftlint:enable function_body_length
 
-    /// Updates the Remote Command Center configuration for skip intervals
+    /// Updates the Remote Command Center configuration for skip intervals and seek
     /// This method should be called when skip interval settings change
-    private func updateRemoteCommandCenter() {
+    private func updateRemoteCommandCenterConfiguration() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
         // Configure skip intervals
@@ -439,7 +417,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         // Update remote command center with new skip intervals
-        self.updateRemoteCommandCenter()
+        self.updateRemoteCommandCenterConfiguration()
 
         // Use a single audio session configuration block for better atomicity
         do {

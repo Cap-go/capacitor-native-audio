@@ -1287,16 +1287,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         try {
                             if (asset != null) {
                                 double currentTime = asset.getCurrentTime();
-                                double newTime = Math.max(0, currentTime - skipBackwardInterval);
-                                asset.setCurrentTime(newTime);
+                                // Validate current time is valid before calculation
+                                if (currentTime >= 0) {
+                                    double newTime = Math.max(0, currentTime - skipBackwardInterval);
+                                    asset.setCurrentTime(newTime);
 
-                                // Notify JavaScript layer
-                                JSObject ret = new JSObject();
-                                ret.put("assetId", currentlyPlayingAssetId);
-                                ret.put("position", newTime);
-                                notifyListeners("seek", ret);
+                                    // Notify JavaScript layer
+                                    JSObject ret = new JSObject();
+                                    ret.put("assetId", currentlyPlayingAssetId);
+                                    ret.put("position", newTime);
+                                    notifyListeners("seek", ret);
 
-                                updatePlaybackStateWithPosition(PlaybackStateCompat.STATE_PLAYING, (long) (newTime * 1000));
+                                    updatePlaybackStateWithPosition(PlaybackStateCompat.STATE_PLAYING, (long) (newTime * 1000));
+                                }
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error skipping backward from media session", e);
@@ -1311,7 +1314,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         try {
                             if (asset != null) {
                                 double currentTime = asset.getCurrentTime();
-                                double newTime = currentTime + skipForwardInterval;
+                                double duration = asset.getDuration();
+                                // Clamp new time to not exceed duration
+                                double newTime = Math.min(currentTime + skipForwardInterval, duration);
                                 asset.setCurrentTime(newTime);
 
                                 // Notify JavaScript layer
