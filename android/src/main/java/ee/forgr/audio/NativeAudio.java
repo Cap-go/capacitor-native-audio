@@ -574,6 +574,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     // Update notification when paused
                     if (showNotification) {
                         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED);
+                        updateNotification(audioId);
                     }
 
                     call.resolve();
@@ -603,6 +604,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     // Update notification when resumed
                     if (showNotification) {
                         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                        updateNotification(audioId);
                     }
 
                     call.resolve();
@@ -1235,6 +1237,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             if (asset != null && !asset.isPlaying()) {
                                 asset.resume();
                                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                                updateNotification(currentlyPlayingAssetId);
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error resuming audio from media session", e);
@@ -1250,6 +1253,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             if (asset != null) {
                                 asset.pause();
                                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED);
+                                updateNotification(currentlyPlayingAssetId);
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error pausing audio from media session", e);
