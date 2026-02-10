@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 
 /**
  * RemoteAudioAsset extends AudioAsset to handle remote (URL-based) audio files
