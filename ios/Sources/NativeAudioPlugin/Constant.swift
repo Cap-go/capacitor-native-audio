@@ -19,6 +19,8 @@ public class Constant {
     public static let IgnoreSilent = "ignoreSilent"
     public static let ShowNotification = "showNotification"
     public static let NotificationMetadata = "notificationMetadata"
+    public static let SkipForwardInterval = "skipForwardInterval"
+    public static let SkipBackwardInterval = "skipBackwardInterval"
 
     // Default values - used for consistency across the plugin
     public static let DefaultVolume: Float = 1.0

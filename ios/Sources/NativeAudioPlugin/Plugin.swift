@@ -68,6 +68,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     internal var notificationMetadataMap: [String: [String: String]] = [:]
     private var currentlyPlayingAssetId: String?
 
+    // Skip interval configuration
+    private var skipForwardInterval: Double = 0
+    private var skipBackwardInterval: Double = 0
+
     /// Stores the asset IDs for playOnce operations to enable automatic cleanup after playback.
     ///
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
@@ -186,6 +190,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 if !asset.isPlaying() {
                     asset.resume()
                     self.updatePlaybackState(isPlaying: true)
+
+                    // Notify JavaScript layer
+                    self.notifyListeners("playbackStateChange", data: [
+                        "assetId": assetId,
+                        "state": "playing"
+                    ])
                 }
             }
             return .success
@@ -204,6 +214,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
                 asset.pause()
                 self.updatePlaybackState(isPlaying: false)
+
+                // Notify JavaScript layer
+                self.notifyListeners("playbackStateChange", data: [
+                    "assetId": assetId,
+                    "state": "paused"
+                ])
             }
             return .success
         }
@@ -223,6 +239,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 self.clearNowPlayingInfo()
                 self.currentlyPlayingAssetId = nil
                 self.updatePlaybackState(isPlaying: false)
+
+                // Notify JavaScript layer
+                self.notifyListeners("playbackStateChange", data: [
+                    "assetId": assetId,
+                    "state": "stopped"
+                ])
             }
             return .success
         }
@@ -241,15 +263,155 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 if asset.isPlaying() {
                     asset.pause()
                     self.updatePlaybackState(isPlaying: false)
+
+                    // Notify JavaScript layer
+                    self.notifyListeners("playbackStateChange", data: [
+                        "assetId": assetId,
+                        "state": "paused"
+                    ])
                 } else {
                     asset.resume()
                     self.updatePlaybackState(isPlaying: true)
+
+                    // Notify JavaScript layer
+                    self.notifyListeners("playbackStateChange", data: [
+                        "assetId": assetId,
+                        "state": "playing"
+                    ])
                 }
             }
             return .success
         }
+
+        // Skip forward command
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let assetId = self.currentlyPlayingAssetId,
+                  self.skipForwardInterval > 0,
+                  let skipEvent = event as? MPSkipIntervalCommandEvent else {
+                return .noSuchContent
+            }
+
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    return
+                }
+
+                let currentTime = asset.getCurrentTime()
+                let newTime = currentTime + skipEvent.interval
+                asset.setCurrentTime(time: newTime)
+
+                // Notify JavaScript layer
+                self.notifyListeners("playbackStateChange", data: [
+                    "assetId": assetId,
+                    "state": "playing"
+                ])
+                self.notifyListeners("seek", data: [
+                    "assetId": assetId,
+                    "position": newTime
+                ])
+            }
+            return .success
+        }
+
+        // Skip backward command
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let assetId = self.currentlyPlayingAssetId,
+                  self.skipBackwardInterval > 0,
+                  let skipEvent = event as? MPSkipIntervalCommandEvent else {
+                return .noSuchContent
+            }
+
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    return
+                }
+
+                let currentTime = asset.getCurrentTime()
+                let newTime = max(0, currentTime - skipEvent.interval)
+                asset.setCurrentTime(time: newTime)
+
+                // Notify JavaScript layer
+                self.notifyListeners("playbackStateChange", data: [
+                    "assetId": assetId,
+                    "state": "playing"
+                ])
+                self.notifyListeners("seek", data: [
+                    "assetId": assetId,
+                    "position": newTime
+                ])
+            }
+            return .success
+        }
+
+        // Change playback position command (seek/scrub)
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let assetId = self.currentlyPlayingAssetId,
+                  let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .noSuchContent
+            }
+
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    return
+                }
+
+                asset.setCurrentTime(time: positionEvent.positionTime)
+
+                // Notify JavaScript layer
+                self.notifyListeners("seek", data: [
+                    "assetId": assetId,
+                    "position": positionEvent.positionTime
+                ])
+            }
+            return .success
+        }
+
+        // Configure skip intervals
+        if skipForwardInterval > 0 {
+            commandCenter.skipForwardCommand.isEnabled = true
+            commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForwardInterval)]
+        } else {
+            commandCenter.skipForwardCommand.isEnabled = false
+        }
+
+        if skipBackwardInterval > 0 {
+            commandCenter.skipBackwardCommand.isEnabled = true
+            commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBackwardInterval)]
+        } else {
+            commandCenter.skipBackwardCommand.isEnabled = false
+        }
+
+        // Enable seek command
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
     }
     // swiftlint:enable function_body_length
+
+    /// Updates the Remote Command Center configuration for skip intervals
+    /// This method should be called when skip interval settings change
+    private func updateRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // Configure skip intervals
+        if skipForwardInterval > 0 {
+            commandCenter.skipForwardCommand.isEnabled = true
+            commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForwardInterval)]
+        } else {
+            commandCenter.skipForwardCommand.isEnabled = false
+        }
+
+        if skipBackwardInterval > 0 {
+            commandCenter.skipBackwardCommand.isEnabled = true
+            commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBackwardInterval)]
+        } else {
+            commandCenter.skipBackwardCommand.isEnabled = false
+        }
+
+        // Ensure seek command is enabled when notification is shown
+        commandCenter.changePlaybackPositionCommand.isEnabled = showNotification
+    }
 
     @objc func configure(_ call: CAPPluginCall) {
         // Save original category on first configure call
@@ -267,6 +429,17 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         let background = call.getBool(Constant.Background) ?? false
         let ignoreSilent = call.getBool(Constant.IgnoreSilent) ?? true
         self.showNotification = call.getBool(Constant.ShowNotification) ?? false
+
+        // Read skip interval configuration
+        if let skipForward = call.getDouble(Constant.SkipForwardInterval) {
+            self.skipForwardInterval = skipForward
+        }
+        if let skipBackward = call.getDouble(Constant.SkipBackwardInterval) {
+            self.skipBackwardInterval = skipBackward
+        }
+
+        // Update remote command center with new skip intervals
+        self.updateRemoteCommandCenter()
 
         // Use a single audio session configuration block for better atomicity
         do {

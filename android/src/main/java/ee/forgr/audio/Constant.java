@@ -18,6 +18,8 @@ public class Constant {
     public static final String LOOP = "loop";
     public static final String SHOW_NOTIFICATION = "showNotification";
     public static final String NOTIFICATION_METADATA = "notificationMetadata";
+    public static final String SKIP_FORWARD_INTERVAL = "skipForwardInterval";
+    public static final String SKIP_BACKWARD_INTERVAL = "skipBackwardInterval";
     public static final int INVALID = 0;
     public static final int PREPARED = 1;
     public static final int PENDING_PLAY = 2;
