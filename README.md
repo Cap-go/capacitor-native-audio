@@ -245,6 +245,16 @@ The media control buttons automatically handle:
 - **Play** - Resumes paused audio
 - **Pause** - Pauses playing audio
 - **Stop** - Stops audio and clears the notification
+- **Rewind 15s** (Android only) - Skips backward 15 seconds
+- **Forward 15s** (Android only) - Skips forward 15 seconds
+
+**Android Notification Controls:**
+On Android, the notification displays three action buttons in this order:
+1. ⏪ **Rewind 15s** - Skip backward 15 seconds
+2. ▶️/⏸️ **Play/Pause** - Toggle playback (icon updates automatically)
+3. ⏩ **Forward 15s** - Skip forward 15 seconds
+
+The skip forward/backward buttons are automatically available when `showNotification: true` is configured. No additional setup is required.
 
 **Notes:**
 - All metadata fields are optional
