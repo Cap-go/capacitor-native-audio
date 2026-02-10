@@ -1397,13 +1397,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             .setContentTitle(title)
             .setContentText(artist)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(android.R.drawable.ic_media_rew, "Rewind 15s", createMediaButtonPendingIntent(PlaybackStateCompat.ACTION_REWIND))
+            .addAction(android.R.drawable.ic_media_rew, "Rewind 15 seconds", createMediaButtonPendingIntent(PlaybackStateCompat.ACTION_REWIND))
             .addAction(
                 isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
                 isPlaying ? "Pause" : "Play",
                 createMediaButtonPendingIntent(isPlaying ? PlaybackStateCompat.ACTION_PAUSE : PlaybackStateCompat.ACTION_PLAY)
             )
-            .addAction(android.R.drawable.ic_media_ff, "Forward 15s", createMediaButtonPendingIntent(PlaybackStateCompat.ACTION_FAST_FORWARD))
+            .addAction(android.R.drawable.ic_media_ff, "Fast forward 15 seconds", createMediaButtonPendingIntent(PlaybackStateCompat.ACTION_FAST_FORWARD))
             .setStyle(
                 new androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(mediaSession.getSessionToken())
