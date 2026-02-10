@@ -40,7 +40,6 @@ public class RemoteAudioAsset: AudioAsset {
                 let player = AVPlayer(playerItem: playerItem)
                 // Apply volume constraints consistent with AudioAsset
                 player.volume = self.initialVolume
-                player.rate = 1.0
                 self.playerItems.append(playerItem)
                 self.players.append(player)
 
