@@ -13,7 +13,7 @@ enum MyError: Error {
 // swiftlint:disable type_body_length file_length
 @objc(NativeAudio)
 public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
-    private let pluginVersion: String = "8.2.9"
+    private let pluginVersion: String = "8.3.0"
     public let identifier = "NativeAudio"
     public let jsName = "NativeAudio"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -67,6 +67,11 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
     internal var notificationMetadataMap: [String: [String: String]] = [:]
     private var currentlyPlayingAssetId: String?
+    
+    // Remote command center support - retain target references to prevent deallocation
+    private var remoteCommandTargets: [Any] = []
+    // Skip interval in seconds (default 15 seconds)
+    private var skipInterval: TimeInterval = 15.0
 
     /// Stores the asset IDs for playOnce operations to enable automatic cleanup after playback.
     ///
@@ -171,9 +176,17 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     // swiftlint:disable function_body_length
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
+        
+        // Clear previous targets to avoid duplicates on re-initialization
+        remoteCommandTargets.removeAll()
+        
+        // Enable remote control events
+        DispatchQueue.main.async {
+            UIApplication.shared.beginReceivingRemoteControlEvents()
+        }
 
         // Play command
-        commandCenter.playCommand.addTarget { [weak self] _ in
+        let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self = self, let assetId = self.currentlyPlayingAssetId else {
                 return .noSuchContent
             }
@@ -190,9 +203,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             return .success
         }
+        remoteCommandTargets.append(playTarget)
 
         // Pause command
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
+        let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             guard let self = self, let assetId = self.currentlyPlayingAssetId else {
                 return .noSuchContent
             }
@@ -207,9 +221,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             return .success
         }
+        remoteCommandTargets.append(pauseTarget)
 
         // Stop command
-        commandCenter.stopCommand.addTarget { [weak self] _ in
+        let stopTarget = commandCenter.stopCommand.addTarget { [weak self] _ in
             guard let self = self, let assetId = self.currentlyPlayingAssetId else {
                 return .noSuchContent
             }
@@ -226,9 +241,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             return .success
         }
+        remoteCommandTargets.append(stopTarget)
 
         // Toggle play/pause command
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+        let toggleTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self = self, let assetId = self.currentlyPlayingAssetId else {
                 return .noSuchContent
             }
@@ -248,6 +264,108 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             return .success
         }
+        remoteCommandTargets.append(toggleTarget)
+        
+        // Skip forward command (15 seconds by default)
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipInterval)]
+        let skipForwardTarget = commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self, let assetId = self.currentlyPlayingAssetId else {
+                return .noSuchContent
+            }
+            
+            var result: MPRemoteCommandHandlerStatus = .success
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    result = .noSuchContent
+                    return
+                }
+                
+                let currentTime = asset.getCurrentTime()
+                let duration = asset.getDuration()
+                
+                // Get skip interval from event if available, otherwise use default
+                var interval = self.skipInterval
+                if let skipEvent = event as? MPSkipIntervalCommandEvent {
+                    interval = skipEvent.interval
+                }
+                
+                let newTime = min(currentTime + interval, duration)
+                asset.setCurrentTime(time: newTime)
+                
+                // Update Now Playing info with new playback time
+                DispatchQueue.main.async {
+                    self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+                }
+            }
+            return result
+        }
+        remoteCommandTargets.append(skipForwardTarget)
+        commandCenter.skipForwardCommand.isEnabled = true
+        
+        // Skip backward command (15 seconds by default)
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipInterval)]
+        let skipBackwardTarget = commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self, let assetId = self.currentlyPlayingAssetId else {
+                return .noSuchContent
+            }
+            
+            var result: MPRemoteCommandHandlerStatus = .success
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    result = .noSuchContent
+                    return
+                }
+                
+                let currentTime = asset.getCurrentTime()
+                
+                // Get skip interval from event if available, otherwise use default
+                var interval = self.skipInterval
+                if let skipEvent = event as? MPSkipIntervalCommandEvent {
+                    interval = skipEvent.interval
+                }
+                
+                let newTime = max(currentTime - interval, 0)
+                asset.setCurrentTime(time: newTime)
+                
+                // Update Now Playing info with new playback time
+                DispatchQueue.main.async {
+                    self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+                }
+            }
+            return result
+        }
+        remoteCommandTargets.append(skipBackwardTarget)
+        commandCenter.skipBackwardCommand.isEnabled = true
+        
+        // Change playback position command (timeline scrubbing)
+        let changePositionTarget = commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self = self, let assetId = self.currentlyPlayingAssetId else {
+                return .noSuchContent
+            }
+            
+            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            
+            var result: MPRemoteCommandHandlerStatus = .success
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    result = .noSuchContent
+                    return
+                }
+                
+                let newTime = positionEvent.positionTime
+                asset.setCurrentTime(time: newTime)
+                
+                // Update Now Playing info with new playback time
+                DispatchQueue.main.async {
+                    self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+                }
+            }
+            return result
+        }
+        remoteCommandTargets.append(changePositionTarget)
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
     }
     // swiftlint:enable function_body_length
 
@@ -267,6 +385,11 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         let background = call.getBool(Constant.Background) ?? false
         let ignoreSilent = call.getBool(Constant.IgnoreSilent) ?? true
         self.showNotification = call.getBool(Constant.ShowNotification) ?? false
+        
+        // Configure skip interval for Control Center skip buttons (default 15 seconds)
+        if let skipIntervalValue = call.getDouble(Constant.SkipInterval) {
+            self.skipInterval = max(skipIntervalValue, 1.0) // Minimum 1 second
+        }
 
         // Use a single audio session configuration block for better atomicity
         do {

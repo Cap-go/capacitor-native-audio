@@ -19,12 +19,14 @@ public class Constant {
     public static let IgnoreSilent = "ignoreSilent"
     public static let ShowNotification = "showNotification"
     public static let NotificationMetadata = "notificationMetadata"
+    public static let SkipInterval = "skipInterval"
 
     // Default values - used for consistency across the plugin
     public static let DefaultVolume: Float = 1.0
     public static let DefaultRate: Float = 1.0
     public static let DefaultChannels: Int = 1
     public static let DefaultFadeDelay: Float = 1.0
+    public static let DefaultSkipInterval: TimeInterval = 15.0
     public static let MinRate: Float = 0.25
     public static let MaxRate: Float = 4.0
     public static let MinVolume: Float = 0.0
