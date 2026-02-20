@@ -6,7 +6,7 @@
 //  Copyright © 2022 Martin Donadieu. All rights reserved.
 //
 
-import AVFoundation
+@preconcurrency import AVFoundation
 
 /**
  * AudioAsset class handles local audio playback via AVAudioPlayer
