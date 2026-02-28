@@ -640,9 +640,20 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         // Don't immediately end the session here, as other players might still be active
-        // Instead, check if all players are done
+        // Instead, check if all players are done and clear Now Playing if this asset was current
         audioQueue.async { [weak self] in
             guard let self = self else { return }
+
+            // Find which asset this player belongs to; if it was the currently playing one, clear notification
+            for (audioId, asset) in self.audioList {
+                if let audioAsset = asset as? AudioAsset, audioAsset.channels.contains(player) {
+                    if self.currentlyPlayingAssetId == audioId {
+                        self.currentlyPlayingAssetId = nil
+                        self.clearNowPlayingInfo()
+                    }
+                    break
+                }
+            }
 
             // Avoid recursive calls by checking if the asset is still in the list
             let hasPlayingAssets = self.audioList.values.contains { asset in
@@ -655,6 +666,11 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             // Only end the session if no more assets are playing
             if !hasPlayingAssets {
+                // If we didn't find the asset above (e.g. playOnce already removed it), clear notification when nothing is playing
+                if self.currentlyPlayingAssetId != nil {
+                    self.currentlyPlayingAssetId = nil
+                    self.clearNowPlayingInfo()
+                }
                 self.endSession()
             }
         }
