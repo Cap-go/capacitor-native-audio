@@ -101,6 +101,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private String currentlyPlayingAssetId;
     private static final int NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "native_audio_channel";
+    private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 512;
 
     // Track playOnce assets for automatic cleanup
     private Set<String> playOnceAssets = new HashSet<>();
@@ -1633,16 +1634,40 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 Uri uri = Uri.parse(urlString);
                 Bitmap bitmap = null;
 
+                // Configure BitmapFactory options to decode at full resolution
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inScaled = false; // Disable density-based scaling
+                options.inPreferredConfig = Bitmap.Config.ARGB_8888; // Use high quality format
+
                 if (uri.getScheme() == null || uri.getScheme().equals("file")) {
                     // Local file
                     File file = new File(uri.getPath());
                     if (file.exists()) {
-                        bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
+                        bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
                     }
                 } else {
                     // Remote URL
                     URL url = new URL(urlString);
-                    bitmap = BitmapFactory.decodeStream(url.openConnection().getInputStream());
+                    bitmap = BitmapFactory.decodeStream(url.openConnection().getInputStream(), null, options);
+                }
+
+                // Resize to optimal notification size if the bitmap is too large
+                // Android notifications typically display artwork at around 128-256dp
+                // We target 512px as a good balance between quality and memory usage
+                if (bitmap != null && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+                    if (bitmap.getWidth() > MAX_NOTIFICATION_ARTWORK_SIZE || bitmap.getHeight() > MAX_NOTIFICATION_ARTWORK_SIZE) {
+                        float scale = Math.min(
+                            (float) MAX_NOTIFICATION_ARTWORK_SIZE / bitmap.getWidth(),
+                            (float) MAX_NOTIFICATION_ARTWORK_SIZE / bitmap.getHeight()
+                        );
+                        int newWidth = Math.round(bitmap.getWidth() * scale);
+                        int newHeight = Math.round(bitmap.getHeight() * scale);
+                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+                        if (scaledBitmap != null) {
+                            bitmap.recycle(); // Free memory from original bitmap
+                            bitmap = scaledBitmap;
+                        }
+                    }
                 }
 
                 Bitmap finalBitmap = bitmap;
