@@ -27,7 +27,9 @@ import static ee.forgr.audio.Constant.VOLUME;
 import android.Manifest;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
@@ -42,6 +44,7 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
+import android.view.KeyEvent;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.media3.common.util.UnstableApi;
@@ -719,6 +722,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     // Update notification when paused
                     if (showNotification) {
                         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED);
+                        updateNotification(audioId);
                     }
 
                     call.resolve();
@@ -763,6 +767,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     // Update notification when resumed
                     if (showNotification) {
                         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                        updateNotification(audioId);
                     }
 
                     call.resolve();
@@ -1491,7 +1496,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
         PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder().setActions(
-            PlaybackStateCompat.ACTION_PLAY | PlaybackStateCompat.ACTION_PAUSE | PlaybackStateCompat.ACTION_STOP
+            PlaybackStateCompat.ACTION_PLAY |
+            PlaybackStateCompat.ACTION_PAUSE |
+            PlaybackStateCompat.ACTION_STOP |
+            PlaybackStateCompat.ACTION_REWIND |
+            PlaybackStateCompat.ACTION_FAST_FORWARD |
+            PlaybackStateCompat.ACTION_SEEK_TO
         );
         mediaSession.setPlaybackState(stateBuilder.build());
 
@@ -1506,6 +1516,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             if (asset != null && !asset.isPlaying()) {
                                 asset.resume();
                                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                                updateNotification(currentlyPlayingAssetId);
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error resuming audio from media session", e);
@@ -1521,6 +1532,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             if (asset != null) {
                                 asset.pause();
                                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED);
+                                updateNotification(currentlyPlayingAssetId);
                             }
                         } catch (Exception e) {
                             Log.e(TAG, "Error pausing audio from media session", e);
@@ -1537,6 +1549,60 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             currentlyPlayingAssetId = null;
                         } catch (Exception e) {
                             Log.e(TAG, "Error stopping audio from media session", e);
+                        }
+                    }
+                }
+
+                @Override
+                public void onRewind() {
+                    if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
+                        AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
+                        try {
+                            if (asset != null) {
+                                // Skip backward 15 seconds
+                                double currentPosition = asset.getCurrentPosition();
+                                double newPosition = Math.max(0, currentPosition - 15.0);
+                                asset.setCurrentPosition(newPosition);
+                                Log.d(TAG, "Rewind 15s: " + currentPosition + " -> " + newPosition);
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error rewinding audio from media session", e);
+                        }
+                    }
+                }
+
+                @Override
+                public void onFastForward() {
+                    if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
+                        AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
+                        try {
+                            if (asset != null) {
+                                // Skip forward 15 seconds
+                                double currentPosition = asset.getCurrentPosition();
+                                double duration = asset.getDuration();
+                                double newPosition = Math.min(duration, currentPosition + 15.0);
+                                asset.setCurrentPosition(newPosition);
+                                Log.d(TAG, "Fast forward 15s: " + currentPosition + " -> " + newPosition);
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error fast forwarding audio from media session", e);
+                        }
+                    }
+                }
+
+                @Override
+                public void onSeekTo(long pos) {
+                    if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
+                        AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
+                        try {
+                            if (asset != null) {
+                                // Convert milliseconds to seconds
+                                double positionInSeconds = pos / 1000.0;
+                                asset.setCurrentPosition(positionInSeconds);
+                                Log.d(TAG, "Seek to: " + positionInSeconds);
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error seeking audio from media session", e);
                         }
                     }
                 }
@@ -1590,23 +1656,71 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     }
 
     private void showNotification(String title, String artist) {
+        // Determine if currently playing
+        boolean isPlaying = false;
+        if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
+            AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
+            if (asset != null) {
+                try {
+                    isPlaying = asset.isPlaying();
+                } catch (Exception e) {
+                    Log.e(TAG, "Error checking playback state", e);
+                }
+            }
+        }
+
+        // Build notification with proper action order: Rewind, Play/Pause, Fast Forward
+        // The MediaStyle will automatically wire these to the MediaSession callbacks
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(getContext(), CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
             .setContentText(artist)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(android.R.drawable.ic_media_rew, "Rewind 15 seconds", createMediaButtonPendingIntent(PlaybackStateCompat.ACTION_REWIND))
+            .addAction(
+                isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+                isPlaying ? "Pause" : "Play",
+                createMediaButtonPendingIntent(isPlaying ? PlaybackStateCompat.ACTION_PAUSE : PlaybackStateCompat.ACTION_PLAY)
+            )
+            .addAction(android.R.drawable.ic_media_ff, "Fast forward 15 seconds", createMediaButtonPendingIntent(PlaybackStateCompat.ACTION_FAST_FORWARD))
             .setStyle(
                 new androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(mediaSession.getSessionToken())
                     .setShowActionsInCompactView(0, 1, 2)
             )
-            .addAction(android.R.drawable.ic_media_previous, "Previous", null)
-            .addAction(android.R.drawable.ic_media_pause, "Pause", null)
-            .addAction(android.R.drawable.ic_media_next, "Next", null)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true);
 
         NotificationManagerCompat notificationManager = NotificationManagerCompat.from(getContext());
         notificationManager.notify(NOTIFICATION_ID, notificationBuilder.build());
+    }
+
+    private PendingIntent createMediaButtonPendingIntent(long action) {
+        Intent intent = new Intent(Intent.ACTION_MEDIA_BUTTON);
+        intent.setPackage(getContext().getPackageName());
+        
+        // Create a key event for the action
+        KeyEvent keyEvent = null;
+        if (action == PlaybackStateCompat.ACTION_PLAY) {
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY);
+        } else if (action == PlaybackStateCompat.ACTION_PAUSE) {
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE);
+        } else if (action == PlaybackStateCompat.ACTION_REWIND) {
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_REWIND);
+        } else if (action == PlaybackStateCompat.ACTION_FAST_FORWARD) {
+            keyEvent = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD);
+        }
+        
+        if (keyEvent != null) {
+            intent.putExtra(Intent.EXTRA_KEY_EVENT, keyEvent);
+        }
+        
+        return PendingIntent.getBroadcast(
+            getContext(),
+            (int) action,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
     }
 
     private void clearNotification() {
@@ -1623,7 +1737,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
         PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
             .setState(state, 0, state == PlaybackStateCompat.STATE_PLAYING ? 1.0f : 0.0f)
-            .setActions(PlaybackStateCompat.ACTION_PLAY | PlaybackStateCompat.ACTION_PAUSE | PlaybackStateCompat.ACTION_STOP);
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY |
+                PlaybackStateCompat.ACTION_PAUSE |
+                PlaybackStateCompat.ACTION_STOP |
+                PlaybackStateCompat.ACTION_REWIND |
+                PlaybackStateCompat.ACTION_FAST_FORWARD |
+                PlaybackStateCompat.ACTION_SEEK_TO
+            );
         mediaSession.setPlaybackState(stateBuilder.build());
     }
 
