@@ -34,7 +34,6 @@ public class RemoteAudioAsset: AudioAsset {
                 let playerItem = AVPlayerItem(asset: asset)
                 let player = AVPlayer(playerItem: playerItem)
                 player.volume = self.initialVolume
-                player.rate = 1.0
                 self.playerItems.append(playerItem)
                 self.players.append(player)
 
