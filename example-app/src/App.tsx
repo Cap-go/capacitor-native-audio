@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NativeAudio } from '@capgo/native-audio';
 import type { PluginListenerHandle } from '@capacitor/core';
+import type { AssetPlayOptions } from '@capgo/native-audio';
 import './App.css';
 
-type AssetKey = 'local' | 'remote';
+type AssetKey = 'local' | 'music' | 'remote';
 
 interface AssetDefinition {
   assetId: string;
@@ -25,6 +26,12 @@ const assets: Record<AssetKey, AssetDefinition> = {
     label: 'Local Beep',
     description: 'Short 440Hz tone packaged with the web assets.'
   },
+  music: {
+    assetId: 'local-music',
+    assetPath: 'audio/music.mp3',
+    label: 'Local Music',
+    description: 'Longer local MP3 for testing seek, fades, and delayed playback.'
+  },
   remote: {
     assetId: 'remote-demo',
     assetPath: 'https://samplelib.com/lib/preview/mp3/sample-3s.mp3',
@@ -36,18 +43,27 @@ const assets: Record<AssetKey, AssetDefinition> = {
 
 const INITIAL_STATE: Record<AssetKey, AssetStatus> = {
   local: { loaded: false },
+  music: { loaded: false },
   remote: { loaded: false }
 };
 
 const App = () => {
   const [activeAsset, setActiveAsset] = useState<AssetKey>('local');
   const [assetState, setAssetState] = useState<Record<AssetKey, AssetStatus>>(INITIAL_STATE);
-  const [volumeMap, setVolumeMap] = useState<Record<AssetKey, number>>({ local: 1, remote: 1 });
+  const [volumeMap, setVolumeMap] = useState<Record<AssetKey, number>>({ local: 1, music: 1, remote: 1 });
   const [statusMessage, setStatusMessage] = useState('Idle');
   const [currentPosition, setCurrentPosition] = useState(0);
   const [isLooping, setIsLooping] = useState(false);
   const [playingAsset, setPlayingAsset] = useState<AssetKey | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [startDelay, setStartDelay] = useState(0);
+  const [startTime, setStartTime] = useState(0);
+  const [volumeChangeDuration, setVolumeChangeDuration] = useState(0);
+  const [shouldFadeIn, setShouldFadeIn] = useState(false);
+  const [fadeInDuration, setFadeInDuration] = useState(1);
+  const [shouldFadeOut, setShouldFadeOut] = useState(false);
+  const [fadeOutDuration, setFadeOutDuration] = useState(1);
+  const [fadeOutStartTime, setFadeOutStartTime] = useState(0);
   const playingAssetRef = useRef<AssetKey | null>(null);
   
   // Notification controls
@@ -71,7 +87,6 @@ const App = () => {
           focus: true, 
           background: true, 
           ignoreSilent: false, 
-          fade: false,
           showNotification
         });
       } catch (error) {
@@ -174,7 +189,18 @@ const App = () => {
       if (!assetState[key].loaded) {
         await preloadAsset(key);
       }
-      await NativeAudio.play({ assetId: definition.assetId });
+      const playOptions: AssetPlayOptions = {
+        assetId: definition.assetId,
+        volume: volumeMap[key],
+        time: startTime,
+        delay: startDelay,
+        fadeIn: shouldFadeIn,
+        fadeInDuration,
+        fadeOut: shouldFadeOut,
+        fadeOutDuration,
+        fadeOutStartTime: shouldFadeOut ? fadeOutStartTime : undefined
+      };
+      await NativeAudio.play(playOptions);
       setPlayingAsset(key);
       setStatusMessage(`Playing ${definition.label}...`);
       setErrorMessage(null);
@@ -198,7 +224,11 @@ const App = () => {
       return;
     }
     try {
-      await NativeAudio.pause({ assetId: assets[playingAsset].assetId });
+      await NativeAudio.pause({
+        assetId: assets[playingAsset].assetId,
+        fadeOut: shouldFadeOut,
+        fadeOutDuration
+      });
       setStatusMessage(`Paused ${assets[playingAsset].label}.`);
     } catch (error) {
       setErrorMessage(normalizeError(error));
@@ -210,7 +240,11 @@ const App = () => {
       return;
     }
     try {
-      await NativeAudio.resume({ assetId: assets[playingAsset].assetId });
+      await NativeAudio.resume({
+        assetId: assets[playingAsset].assetId,
+        fadeIn: shouldFadeIn,
+        fadeInDuration
+      });
       setStatusMessage(`Resumed ${assets[playingAsset].label}.`);
     } catch (error) {
       setErrorMessage(normalizeError(error));
@@ -222,9 +256,14 @@ const App = () => {
       return;
     }
     try {
-      await NativeAudio.stop({ assetId: assets[playingAsset].assetId });
+      await NativeAudio.stop({
+        assetId: assets[playingAsset].assetId,
+        fadeOut: shouldFadeOut,
+        fadeOutDuration
+      });
       setPlayingAsset(null);
       setCurrentPosition(0);
+      setIsLooping(false);
       setStatusMessage(`Stopped ${assets[playingAsset].label}.`);
     } catch (error) {
       setErrorMessage(normalizeError(error));
@@ -257,7 +296,25 @@ const App = () => {
       return;
     }
     try {
-      await NativeAudio.setVolume({ assetId: assets[key].assetId, volume: value });
+      await NativeAudio.setVolume({
+        assetId: assets[key].assetId,
+        volume: value,
+        duration: volumeChangeDuration
+      });
+    } catch (error) {
+      setErrorMessage(normalizeError(error));
+    }
+  };
+
+  const seekPlaybackPosition = async (rawValue: string) => {
+    const time = Number(rawValue);
+    setCurrentPosition(time);
+    setStartTime(time);
+    if (!playingAsset) {
+      return;
+    }
+    try {
+      await NativeAudio.setCurrentTime({ assetId: assets[playingAsset].assetId, time });
     } catch (error) {
       setErrorMessage(normalizeError(error));
     }
@@ -407,6 +464,51 @@ const App = () => {
               style={{ flex: 1 }}
             />
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+            <label htmlFor="volume-duration" style={{ flex: '0 0 auto', margin: 0 }}>
+              Volume Ramp ({volumeChangeDuration.toFixed(1)}s)
+            </label>
+            <input
+              id="volume-duration"
+              type="range"
+              min="0"
+              max="5"
+              step="0.5"
+              value={volumeChangeDuration}
+              onChange={event => setVolumeChangeDuration(Number(event.target.value))}
+              style={{ flex: 1 }}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+            <label htmlFor="start-delay" style={{ flex: '0 0 auto', margin: 0 }}>Start Delay ({startDelay.toFixed(1)}s)</label>
+            <input
+              id="start-delay"
+              type="range"
+              min="0"
+              max="5"
+              step="0.5"
+              value={startDelay}
+              onChange={event => setStartDelay(Number(event.target.value))}
+              style={{ flex: 1 }}
+              disabled={isLooping}
+            />
+          </div>
+          {typeof activeStatus.duration === 'number' && activeStatus.duration > 0.5 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+              <label htmlFor="start-time" style={{ flex: '0 0 auto', margin: 0 }}>Start/Seek ({startTime.toFixed(1)}s)</label>
+              <input
+                id="start-time"
+                type="range"
+                min="0"
+                max={Math.max(0.5, activeStatus.duration)}
+                step="0.1"
+                value={Math.min(startTime, activeStatus.duration)}
+                onChange={event => seekPlaybackPosition(event.target.value)}
+                style={{ flex: 1 }}
+                disabled={isLooping}
+              />
+            </div>
+          )}
         </div>
         <div className="secondary-actions">
           <button type="button" onClick={toggleLoop} disabled={!playingAsset}>
@@ -418,6 +520,84 @@ const App = () => {
           <button type="button" onClick={clearCache}>
             Clear Remote Cache
           </button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Fade Controls</h2>
+        <p className="asset-description">
+          Configure fade in/out behavior used by play, pause/resume, and stop actions.
+        </p>
+        <div className="slider-group">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={shouldFadeIn}
+              onChange={event => setShouldFadeIn(event.target.checked)}
+              disabled={isLooping}
+            />
+            <span>Enable Fade In</span>
+          </label>
+          {shouldFadeIn && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+              <label htmlFor="fade-in-duration" style={{ flex: '0 0 auto', margin: 0 }}>
+                Fade In Duration ({fadeInDuration.toFixed(1)}s)
+              </label>
+              <input
+                id="fade-in-duration"
+                type="range"
+                min="0"
+                max="5"
+                step="0.5"
+                value={fadeInDuration}
+                onChange={event => setFadeInDuration(Number(event.target.value))}
+                style={{ flex: 1 }}
+              />
+            </div>
+          )}
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={shouldFadeOut}
+              onChange={event => setShouldFadeOut(event.target.checked)}
+            />
+            <span>Enable Fade Out</span>
+          </label>
+          {shouldFadeOut && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                <label htmlFor="fade-out-duration" style={{ flex: '0 0 auto', margin: 0 }}>
+                  Fade Out Duration ({fadeOutDuration.toFixed(1)}s)
+                </label>
+                <input
+                  id="fade-out-duration"
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.5"
+                  value={fadeOutDuration}
+                  onChange={event => setFadeOutDuration(Number(event.target.value))}
+                  style={{ flex: 1 }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', width: '100%' }}>
+                <label htmlFor="fade-out-start" style={{ flex: '0 0 auto', margin: 0 }}>
+                  Fade Out Start ({fadeOutStartTime.toFixed(1)}s)
+                </label>
+                <input
+                  id="fade-out-start"
+                  type="range"
+                  min="0"
+                  max={Math.max(5, activeStatus.duration ?? 5)}
+                  step="0.5"
+                  value={fadeOutStartTime}
+                  onChange={event => setFadeOutStartTime(Number(event.target.value))}
+                  style={{ flex: 1 }}
+                />
+              </div>
+            </>
+          )}
         </div>
       </section>
 

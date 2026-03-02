@@ -8,15 +8,15 @@ enum MyError: Error {
     case runtimeError(String)
 }
 
-/// Please read the Capacitor iOS Plugin Development Guide
-/// here: https://capacitor.ionicframework.com/docs/plugins/ios
-// swiftlint:disable type_body_length file_length
+// swiftlint:disable file_length
 @objc(NativeAudio)
+// swiftlint:disable:next type_body_length
 public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
-    private let pluginVersion: String = "8.2.8"
+    private let pluginVersion: String = "8.3.2"
     public let identifier = "NativeAudio"
     public let jsName = "NativeAudio"
     public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setDebugMode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "configure", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "preload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "playOnce", returnType: CAPPluginReturnPromise),
@@ -37,6 +37,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPluginVersion", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "deinitPlugin", returnType: CAPPluginReturnPromise)
     ]
+    private var logger = Logger(logTag: "NativeAudio")
     internal let audioQueue = DispatchQueue(label: "ee.forgr.audio.queue", qos: .userInitiated, attributes: .concurrent)
     /// A dictionary that stores audio asset objects by their asset IDs.
     ///
@@ -48,7 +49,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
     private let queueKey = DispatchSpecificKey<Bool>()
-    var fadeMusic = false
+    /// Set while executing a block on the audio queue so getAudioAsset/endSession can avoid reentrant sync (deadlock).
+    private let audioQueueContextKey = DispatchSpecificKey<Bool?>()
     var session = AVAudioSession.sharedInstance()
 
     // Track if audio session has been initialized
@@ -76,6 +78,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     ///
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
     internal var playOnceAssets: Set<String> = []
+
+    private var pendingPlayTasks: [String: DispatchWorkItem] = [:]
+    private var audioAssetData: [String: [String: Any]] = [:]
+    var isRunningTests = false
 
     /// Initialize plugin state and audio-related handlers, and register background behavior for session management.
     ///
@@ -189,7 +195,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
                 if !asset.isPlaying() {
                     asset.resume()
-                    self.updatePlaybackState(isPlaying: true)
+                    self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
 
                     // Notify JavaScript layer
                     self.notifyListeners("playbackStateChange", data: [
@@ -271,7 +277,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     ])
                 } else {
                     asset.resume()
-                    self.updatePlaybackState(isPlaying: true)
+                    self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
 
                     // Notify JavaScript layer
                     self.notifyListeners("playbackStateChange", data: [
@@ -394,6 +400,15 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         commandCenter.changePlaybackPositionCommand.isEnabled = showNotification
     }
 
+    @objc func setDebugMode(_ call: CAPPluginCall) {
+        let debug = call.getBool("enabled") ?? false
+        Logger.debugModeEnabled = debug
+        if debug {
+            logger.info("Debug mode enabled")
+        }
+        call.resolve()
+    }
+
     @objc func configure(_ call: CAPPluginCall) {
         // Save original category on first configure call
         if !audioSessionInitialized {
@@ -402,14 +417,16 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             audioSessionInitialized = true
         }
 
-        if let fade = call.getBool(Constant.FadeKey) {
-            self.fadeMusic = fade
-        }
-
         let focus = call.getBool(Constant.FocusAudio) ?? false
         let background = call.getBool(Constant.Background) ?? false
         let ignoreSilent = call.getBool(Constant.IgnoreSilent) ?? true
-        self.showNotification = call.getBool(Constant.ShowNotification) ?? false
+        // Only update showNotification when explicitly provided so repeated configure() calls
+        // (e.g. when switching assets) don't reset it to false and break Now Playing for the next play
+        if let showNotification = call.getBool(Constant.ShowNotification) {
+            self.showNotification = showNotification
+        }
+
+        logger.info("Configuring audio session with focus=%@ background=%@ ignoreSilent=%@", "\(focus)", "\(background)", "\(ignoreSilent)")
 
         // Read skip interval configuration
         if let skipForward = call.getDouble(Constant.SkipForwardInterval) {

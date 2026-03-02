@@ -75,8 +75,6 @@
 
     "@ionic/prettier-config": ["@ionic/prettier-config@4.0.0", "", { "peerDependencies": { "prettier": "^2.4.0 || ^3.0.0" } }, "sha512-0DqL6CggVdgeJAWOLPUT73rF1VD5p0tVlCpC5GXz5vTIUBxNwsJ5085Q7wXjKiE5Odx3aOHGTcuRWCawFsLFag=="],
 
-    "@ionic/swiftlint-config": ["@ionic/swiftlint-config@2.0.0", "", {}, "sha512-TXy76ALSKhUZzBziHz7aoEtSQwHofBIDRNzM9x4sndtC7fefbZsBw3UgGwXFTOc7hoj72EAGyqZNUhj9LlhaNQ=="],
-
     "@ionic/utils-array": ["@ionic/utils-array@2.1.6", "", { "dependencies": { "debug": "^4.0.0", "tslib": "^2.0.1" } }, "sha512-0JZ1Zkp3wURnv8oq6Qt7fMPo5MpjbLoUoa9Bu2Q4PJuSDWM8H8gwF3dQO7VTeUj3/0o1IB1wGkFWZZYgUXZMUg=="],
 
     "@ionic/utils-fs": ["@ionic/utils-fs@3.1.7", "", { "dependencies": { "@types/fs-extra": "^8.0.0", "debug": "^4.0.0", "fs-extra": "^9.0.0", "tslib": "^2.0.1" } }, "sha512-2EknRvMVfhnyhL1VhFkSLa5gOcycK91VnjfrTB0kbqkTFCOXyXgVLI5whzq7SLrgD9t1aqos3lMMQyVzaQ5gVA=="],
