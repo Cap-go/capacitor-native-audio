@@ -8,8 +8,39 @@ export interface CompletedEvent {
    */
   assetId: string;
 }
-
 export type CompletedListener = (state: CompletedEvent) => void;
+
+export interface PlaybackStateChangeEvent {
+  /**
+   * The asset ID of the audio that changed state
+   *
+   * @since 8.3.0
+   */
+  assetId: string;
+  /**
+   * The new playback state: 'playing', 'paused', or 'stopped'
+   *
+   * @since 8.3.0
+   */
+  state: 'playing' | 'paused' | 'stopped';
+}
+export type PlaybackStateChangeListener = (event: PlaybackStateChangeEvent) => void;
+
+export interface SeekEvent {
+  /**
+   * The asset ID of the audio that was seeked
+   *
+   * @since 8.3.0
+   */
+  assetId: string;
+  /**
+   * The new position in seconds
+   *
+   * @since 8.3.0
+   */
+  position: number;
+}
+export type SeekListener = (event: SeekEvent) => void;
 
 export interface Assets {
   /**
@@ -227,6 +258,28 @@ export interface ConfigureOptions {
    * @since 8.2.0
    */
   backgroundPlayback?: boolean;
+  /**
+   * Skip forward interval in seconds for media controls (e.g., 15 seconds)
+   * When enabled with `showNotification: true`, displays skip forward button in lock screen controls
+   * and notification. Bluetooth headset skip forward buttons will also use this interval.
+   *
+   * Common values: 5, 10, 15, 30 seconds
+   *
+   * @default undefined (skip forward disabled)
+   * @since 8.3.0
+   */
+  skipForwardInterval?: number;
+  /**
+   * Skip backward interval in seconds for media controls (e.g., 15 seconds)
+   * When enabled with `showNotification: true`, displays skip backward button in lock screen controls
+   * and notification. Bluetooth headset skip backward buttons will also use this interval.
+   *
+   * Common values: 5, 10, 15, 30 seconds
+   *
+   * @default undefined (skip backward disabled)
+   * @since 8.3.0
+   */
+  skipBackwardInterval?: number;
 }
 
 /**
@@ -373,7 +426,6 @@ export interface CurrentTimeEvent {
    */
   assetId: string;
 }
-
 export type CurrentTimeListener = (state: CurrentTimeEvent) => void;
 
 export interface NativeAudio {
@@ -384,7 +436,6 @@ export interface NativeAudio {
    * @returns
    */
   configure(options: ConfigureOptions): Promise<void>;
-
   /**
    * Load an audio file
    * @since 5.0.0
@@ -449,7 +500,6 @@ export interface NativeAudio {
    * @returns {Promise<boolean>}
    */
   isPreloaded(options: PreloadOptions): Promise<{ found: boolean }>;
-
   /**
    * Play an audio file
    * @since 5.0.0
@@ -537,16 +587,14 @@ export interface NativeAudio {
    * @returns {Promise<{ duration: number }>}
    */
   getDuration(options: Assets): Promise<{ duration: number }>;
-
   /**
    * Check if an audio file is playing
    *
    * @since 5.0.0
-   * @param option {@link Assets}
+   * @param option {@link AssetPlayOptions}
    * @returns {Promise<boolean>}
    */
   isPlaying(options: Assets): Promise<{ isPlaying: boolean }>;
-
   /**
    * Listen for complete event
    *
@@ -554,7 +602,6 @@ export interface NativeAudio {
    * return {@link CompletedEvent}
    */
   addListener(eventName: 'complete', listenerFunc: CompletedListener): Promise<PluginListenerHandle>;
-
   /**
    * Listen for current time updates
    * Emits every 100ms while audio is playing
@@ -563,6 +610,30 @@ export interface NativeAudio {
    * return {@link CurrentTimeEvent}
    */
   addListener(eventName: 'currentTime', listenerFunc: CurrentTimeListener): Promise<PluginListenerHandle>;
+  /**
+   * Listen for playback state changes from external controls
+   * Emitted when playback is controlled from lock screen, Control Center, notification,
+   * Bluetooth headset buttons, or CarPlay/Android Auto.
+   *
+   * This allows your app UI to stay in sync with external playback controls.
+   *
+   * @since 8.3.0
+   * return {@link PlaybackStateChangeEvent}
+   */
+  addListener(
+    eventName: 'playbackStateChange',
+    listenerFunc: PlaybackStateChangeListener,
+  ): Promise<PluginListenerHandle>;
+  /**
+   * Listen for seek events from external controls
+   * Emitted when user scrubs the timeline from lock screen, Control Center, or notification.
+   *
+   * This allows your app UI to update its playback position when controlled externally.
+   *
+   * @since 8.3.0
+   * return {@link SeekEvent}
+   */
+  addListener(eventName: 'seek', listenerFunc: SeekListener): Promise<PluginListenerHandle>;
   /**
    * Clear the audio cache for remote audio files
    * @since 6.5.0
