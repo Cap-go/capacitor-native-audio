@@ -70,6 +70,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     internal var notificationMetadataMap: [String: [String: String]] = [:]
     private var currentlyPlayingAssetId: String?
 
+    // Skip interval configuration
+    private var skipForwardInterval: Double = 0
+    private var skipBackwardInterval: Double = 0
+
     /// Stores the asset IDs for playOnce operations to enable automatic cleanup after playback.
     ///
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
@@ -87,6 +91,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     @objc override public func load() {
         super.load()
         audioQueue.setSpecific(key: queueKey, value: true)
+
+        self.fadeMusic = false
 
         // Don't setup audio session on load - defer until first use
         // setupAudioSession()
@@ -190,6 +196,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 if !asset.isPlaying() {
                     asset.resume()
                     self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+
+                    // Notify JavaScript layer
+                    self.notifyListeners("playbackStateChange", data: [
+                        "assetId": assetId,
+                        "state": "playing"
+                    ])
                 }
             }
             return .success
@@ -208,6 +220,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
                 asset.pause()
                 self.updatePlaybackState(isPlaying: false)
+
+                // Notify JavaScript layer
+                self.notifyListeners("playbackStateChange", data: [
+                    "assetId": assetId,
+                    "state": "paused"
+                ])
             }
             return .success
         }
@@ -224,7 +242,15 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 }
 
                 asset.stop()
+                self.clearNowPlayingInfo()
                 self.currentlyPlayingAssetId = nil
+                self.updatePlaybackState(isPlaying: false)
+
+                // Notify JavaScript layer
+                self.notifyListeners("playbackStateChange", data: [
+                    "assetId": assetId,
+                    "state": "stopped"
+                ])
             }
             return .success
         }
@@ -243,15 +269,136 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 if asset.isPlaying() {
                     asset.pause()
                     self.updatePlaybackState(isPlaying: false)
+
+                    // Notify JavaScript layer
+                    self.notifyListeners("playbackStateChange", data: [
+                        "assetId": assetId,
+                        "state": "paused"
+                    ])
                 } else {
                     asset.resume()
                     self.updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+
+                    // Notify JavaScript layer
+                    self.notifyListeners("playbackStateChange", data: [
+                        "assetId": assetId,
+                        "state": "playing"
+                    ])
                 }
             }
             return .success
         }
+
+        // Skip forward command
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let assetId = self.currentlyPlayingAssetId,
+                  self.skipForwardInterval > 0,
+                  let skipEvent = event as? MPSkipIntervalCommandEvent else {
+                return .noSuchContent
+            }
+
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    return
+                }
+
+                let currentTime = asset.getCurrentTime()
+                let duration = asset.getDuration()
+                let newTime = min(currentTime + skipEvent.interval, duration)
+                asset.setCurrentTime(time: newTime)
+
+                // Notify JavaScript layer of seek event only
+                self.notifyListeners("seek", data: [
+                    "assetId": assetId,
+                    "position": newTime
+                ])
+            }
+            return .success
+        }
+
+        // Skip backward command
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let assetId = self.currentlyPlayingAssetId,
+                  self.skipBackwardInterval > 0,
+                  let skipEvent = event as? MPSkipIntervalCommandEvent else {
+                return .noSuchContent
+            }
+
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    return
+                }
+
+                let currentTime = asset.getCurrentTime()
+                let newTime = max(0, currentTime - skipEvent.interval)
+                asset.setCurrentTime(time: newTime)
+
+                // Notify JavaScript layer of seek event only
+                self.notifyListeners("seek", data: [
+                    "assetId": assetId,
+                    "position": newTime
+                ])
+            }
+            return .success
+        }
+
+        // Change playback position command (seek/scrub)
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self = self,
+                  let assetId = self.currentlyPlayingAssetId,
+                  let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
+                return .noSuchContent
+            }
+
+            self.audioQueue.sync {
+                guard let asset = self.audioList[assetId] as? AudioAsset else {
+                    return
+                }
+
+                // Validate seek position against duration
+                let duration = asset.getDuration()
+                let validatedPosition = min(positionEvent.positionTime, duration)
+                asset.setCurrentTime(time: validatedPosition)
+
+                // Notify JavaScript layer
+                self.notifyListeners("seek", data: [
+                    "assetId": assetId,
+                    "position": validatedPosition
+                ])
+            }
+            return .success
+        }
+
+        // Configure skip intervals and seek command
+        updateRemoteCommandCenterConfiguration()
     }
     // swiftlint:enable function_body_length
+
+    /// Updates the Remote Command Center configuration for skip intervals and seek
+    /// This method should be called when skip interval settings change
+    private func updateRemoteCommandCenterConfiguration() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        // Configure skip intervals
+        if skipForwardInterval > 0 {
+            commandCenter.skipForwardCommand.isEnabled = true
+            commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipForwardInterval)]
+        } else {
+            commandCenter.skipForwardCommand.isEnabled = false
+        }
+
+        if skipBackwardInterval > 0 {
+            commandCenter.skipBackwardCommand.isEnabled = true
+            commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipBackwardInterval)]
+        } else {
+            commandCenter.skipBackwardCommand.isEnabled = false
+        }
+
+        // Ensure seek command is enabled when notification is shown
+        commandCenter.changePlaybackPositionCommand.isEnabled = showNotification
+    }
 
     @objc func setDebugMode(_ call: CAPPluginCall) {
         let debug = call.getBool("enabled") ?? false
@@ -280,6 +427,17 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         logger.info("Configuring audio session with focus=%@ background=%@ ignoreSilent=%@", "\(focus)", "\(background)", "\(ignoreSilent)")
+
+        // Read skip interval configuration
+        if let skipForward = call.getDouble(Constant.SkipForwardInterval) {
+            self.skipForwardInterval = skipForward
+        }
+        if let skipBackward = call.getDouble(Constant.SkipBackwardInterval) {
+            self.skipBackwardInterval = skipBackward
+        }
+
+        // Update remote command center with new skip intervals
+        self.updateRemoteCommandCenterConfiguration()
 
         // Use a single audio session configuration block for better atomicity
         do {
@@ -312,7 +470,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
 
         } catch {
-            logger.error("Failed to configure audio session: %@", error.localizedDescription)
+            print("Failed to configure audio session: \(error)")
         }
 
         call.resolve()
@@ -346,7 +504,23 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         preloadAsset(call, isComplex: true)
     }
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
+    /// Plays an audio file once with automatic cleanup after completion.
+    ///
+    /// This is a convenience method that combines preload, play, and unload into a single call.
+    /// The audio asset is automatically cleaned up after playback completes or if an error occurs.
+    /// Preloads and optionally plays a one-shot audio asset, then removes it from internal storage after completion.
+    ///
+    /// The method generates a unique temporary asset identifier, loads the asset from a local file, a public bundle resource, or a remote URL (with optional headers), and tracks it as a transient "play-once" asset. If `autoPlay` is true the asset will begin playback immediately and the plugin's audio session will be activated. When playback completes (or when the asset is unloaded), the asset and any associated Now Playing metadata are removed. If `deleteAfterPlay` is true and the source was a local file URL, the file is deleted from disk if it passes safe-sandbox checks.
+    ///
+    /// - Parameter call: The Capacitor plugin call containing:
+    ///   - `assetPath`: Path to the audio file (required)
+    ///   - `volume`: Playback volume 0.1-1.0 (default: 1.0)
+    ///   - `isUrl`: Whether assetPath is a URL (default: false)
+    ///   - `autoPlay`: Start playback immediately (default: true)
+    ///   - `deleteAfterPlay`: Delete file after playback (default: false)
+    ///   - `notificationMetadata`: Metadata for Now Playing info (optional)
+    ///
+    /// The call is resolved with `["assetId": "<generated id>"]` on success or rejected with an error message on failure.
     @objc func playOnce(_ call: CAPPluginCall) {
         // Generate unique temporary asset ID
         let assetId = "playOnce_\(Int(Date().timeIntervalSince1970 * 1000))_\(UUID().uuidString.prefix(8))"
@@ -419,8 +593,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 self.playOnceAssets.remove(assetId)
                 self.notificationMetadataMap.removeValue(forKey: assetId)
 
-                // Reset current track if this was the currently playing asset (next play will overwrite Now Playing)
+                // Clear notification if this was the currently playing asset
                 if self.currentlyPlayingAssetId == assetId {
+                    self.clearNowPlayingInfo()
                     self.currentlyPlayingAssetId = nil
                 }
 
@@ -484,7 +659,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                             withAssetId: assetId,
                             withPath: basePath,
                             withChannels: 1,
-                            withVolume: volume
+                            withVolume: volume,
+                            withFadeDelay: 0.5
                         )
                         self.audioList[assetId] = audioAsset
                     } else {
@@ -509,6 +685,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                         withPath: assetPath,
                         withChannels: 1,
                         withVolume: volume,
+                        withFadeDelay: 0.5,
                         withHeaders: headers
                     )
                     self.audioList[assetId] = remoteAudioAsset
@@ -531,7 +708,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                         withAssetId: assetId,
                         withPath: basePath,
                         withChannels: 1,
-                        withVolume: volume
+                        withVolume: volume,
+                        withFadeDelay: 0.5
                     )
                     self.audioList[assetId] = audioAsset
                 } else {
@@ -550,7 +728,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                         withAssetId: assetId,
                         withPath: basePath,
                         withChannels: 1,
-                        withVolume: volume
+                        withVolume: volume,
+                        withFadeDelay: 0.5
                     )
                     self.audioList[assetId] = audioAsset
                 } else {
@@ -576,7 +755,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             // Auto-play if requested
             if autoPlay {
                 self.activateSession()
-                asset.play(time: 0, volume: nil)
+                asset.play(time: 0, delay: 0)
 
                 // Update notification center if enabled
                 if self.showNotification {
@@ -608,23 +787,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     func endSession() {
         do {
-            // Avoid reentrant sync when already on audio queue (e.g. from pause()) to prevent deadlock
-            let hasPlayingAssets: Bool
-            if DispatchQueue.getSpecific(key: audioQueueContextKey) == true {
-                hasPlayingAssets = self.audioList.values.contains { asset in
+            // Check if any audio assets are still playing before deactivating
+            let hasPlayingAssets = audioQueue.sync {
+                return self.audioList.values.contains { asset in
                     if let audioAsset = asset as? AudioAsset {
                         return audioAsset.isPlaying()
                     }
                     return false
-                }
-            } else {
-                hasPlayingAssets = audioQueue.sync {
-                    return self.audioList.values.contains { asset in
-                        if let audioAsset = asset as? AudioAsset {
-                            return audioAsset.isPlaying()
-                        }
-                        return false
-                    }
                 }
             }
 
@@ -652,20 +821,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         // Don't immediately end the session here, as other players might still be active
-        // Instead, check if all players are done and clear Now Playing if this asset was current
+        // Instead, check if all players are done
         audioQueue.async { [weak self] in
             guard let self = self else { return }
-
-            // Find which asset this player belongs to; if it was the currently playing one, clear notification
-            for (audioId, asset) in self.audioList {
-                if let audioAsset = asset as? AudioAsset, audioAsset.channels.contains(player) {
-                    if self.currentlyPlayingAssetId == audioId {
-                        self.currentlyPlayingAssetId = nil
-                        self.clearNowPlayingInfo()
-                    }
-                    break
-                }
-            }
 
             // Avoid recursive calls by checking if the asset is still in the list
             let hasPlayingAssets = self.audioList.values.contains { asset in
@@ -678,27 +836,15 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             // Only end the session if no more assets are playing
             if !hasPlayingAssets {
-                // If we didn't find the asset above (e.g. playOnce already removed it), clear notification when nothing is playing
-                if self.currentlyPlayingAssetId != nil {
-                    self.currentlyPlayingAssetId = nil
-                    self.clearNowPlayingInfo()
-                }
                 self.endSession()
             }
         }
     }
 
-    // swiftlint:disable:next function_body_length
     @objc func play(_ call: CAPPluginCall) {
         let audioId = call.getString(Constant.AssetIdKey) ?? ""
-        let time = max(call.getDouble(Constant.Time) ?? 0, 0)
-        let delay = max(call.getDouble(Constant.Delay) ?? 0, 0)
-        let volume = call.getFloat(Constant.Volume)
-        let fadeIn = call.getBool(Constant.FadeIn) ?? false
-        let fadeOut = call.getBool(Constant.FadeOut) ?? false
-        let fadeInDuration = call.getDouble(Constant.FadeInDuration) ?? Double(Constant.DefaultFadeDuration)
-        let fadeOutDuration = call.getDouble(Constant.FadeOutDuration) ?? Double(Constant.DefaultFadeDuration)
-        let fadeOutStartTime = call.getDouble(Constant.FadeOutStartTime) ?? 0.0
+        let time = max(call.getDouble("time") ?? 0, 0) // Ensure non-negative time
+        let delay = max(call.getDouble("delay") ?? 0, 0) // Ensure non-negative delay
 
         // Ensure audio session is initialized before first play
         if !audioSessionInitialized {
@@ -719,44 +865,20 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             if let audioAsset = asset as? AudioAsset {
                 self.activateSession()
-                cancelPendingPlay(for: audioId)
-                clearAudioAssetData(for: audioId)
-
-                let playBlock = { [weak self] in
-                    guard let self else { return }
-                    self.executeOnAudioQueue {
-                        if fadeIn {
-                            audioAsset.playWithFade(time: time, volume: volume, fadeInDuration: fadeInDuration)
-                        } else {
-                            audioAsset.play(time: time, volume: volume)
-                        }
-                        self.pendingPlayTasks[audioId] = nil
-
-                        if fadeOut {
-                            self.handleFadeOut(
-                                for: audioAsset,
-                                audioId: audioId,
-                                fadeOutDuration: fadeOutDuration,
-                                fadeOutStartTime: fadeOutStartTime
-                            )
-                        }
-
-                        if self.showNotification {
-                            self.currentlyPlayingAssetId = audioId
-                            self.updateNowPlayingInfo(audioId: audioId, audioAsset: audioAsset)
-                            self.updatePlaybackState(isPlaying: true)
-                        }
-                        call.resolve()
-                    }
-                }
-
-                if delay > 0 {
-                    let workItem = DispatchWorkItem(block: playBlock)
-                    pendingPlayTasks[audioId] = workItem
-                    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+                if self.fadeMusic {
+                    audioAsset.playWithFade(time: time)
                 } else {
-                    playBlock()
+                    audioAsset.play(time: time, delay: delay)
                 }
+
+                // Update notification center if enabled
+                if self.showNotification {
+                    self.currentlyPlayingAssetId = audioId
+                    self.updateNowPlayingInfo(audioId: audioId, audioAsset: audioAsset)
+                    self.updatePlaybackState(isPlaying: true)
+                }
+
+                call.resolve()
             } else if let audioNumber = asset as? NSNumber {
                 self.activateSession()
                 AudioServicesPlaySystemSound(SystemSoundID(audioNumber.intValue))
@@ -768,29 +890,22 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     }
 
     @objc private func getAudioAsset(_ call: CAPPluginCall) -> AudioAsset? {
-        // Avoid reentrant sync when already on audio queue (e.g. from pause()) to prevent deadlock
-        if DispatchQueue.getSpecific(key: audioQueueContextKey) == true {
-            return self.audioList[call.getString(Constant.AssetIdKey) ?? ""] as? AudioAsset
-        }
         var asset: AudioAsset?
-        audioQueue.sync {
+        audioQueue.sync { // Read operations should use sync
             asset = self.audioList[call.getString(Constant.AssetIdKey) ?? ""] as? AudioAsset
         }
         return asset
     }
 
     @objc func setCurrentTime(_ call: CAPPluginCall) {
+        // Consistent use of audioQueue.sync for all operations
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
             }
 
-            cancelPendingPlay(for: audioAsset.assetId)
-            clearAudioAssetData(for: audioAsset.assetId)
-            let time = max(call.getDouble(Constant.Time) ?? 0, 0)
+            let time = max(call.getDouble("time") ?? 0, 0) // Ensure non-negative time
             audioAsset.setCurrentTime(time: time)
             call.resolve()
         }
@@ -798,8 +913,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func getDuration(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
@@ -813,8 +926,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func getCurrentTime(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
@@ -827,40 +938,17 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     }
 
     @objc func resume(_ call: CAPPluginCall) {
-        let audioId = call.getString(Constant.AssetIdKey) ?? ""
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
             }
             self.activateSession()
-            let fadeIn = call.getBool(Constant.FadeIn) ?? false
-            let fadeInDuration = call.getDouble(Constant.FadeInDuration) ?? Double(Constant.DefaultFadeDuration)
-            var restoredVolume: Float?
-            if let data = audioAssetData[audioAsset.assetId], let volume = data["volumeBeforePause"] as? Float {
-                restoredVolume = volume
-            }
-            if fadeIn {
-                let targetVolume = restoredVolume ?? (audioAsset.channels.first?.volume ?? audioAsset.initialVolume)
-                audioAsset.setVolume(volume: 0, fadeDuration: 0)
-                audioAsset.resume()
-                audioAsset.setVolume(volume: NSNumber(value: targetVolume), fadeDuration: fadeInDuration)
-            } else {
-                if let volume = restoredVolume {
-                    audioAsset.setVolume(volume: NSNumber(value: volume), fadeDuration: 0)
-                }
-                audioAsset.resume()
-            }
-            if var data = audioAssetData[audioAsset.assetId] {
-                data.removeValue(forKey: "volumeBeforePause")
-                audioAssetData[audioAsset.assetId] = data
-            }
+            audioAsset.resume()
 
             // Update notification when resumed
             if self.showNotification {
-                self.updateNowPlayingInfo(audioId: audioId, audioAsset: audioAsset)
+                self.updatePlaybackState(isPlaying: true)
             }
 
             call.resolve()
@@ -869,25 +957,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func pause(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
             }
-            cancelPendingPlay(for: audioAsset.assetId)
-            let fadeOut = call.getBool(Constant.FadeOut) ?? false
-            let fadeOutDuration = call.getDouble(Constant.FadeOutDuration) ?? Double(Constant.DefaultFadeDuration)
-            let currentVolume = audioAsset.channels.first?.volume ?? audioAsset.initialVolume
-            var data = audioAssetData[audioAsset.assetId] ?? [:]
-            data["volumeBeforePause"] = currentVolume
-            audioAssetData[audioAsset.assetId] = data
 
-            if fadeOut {
-                audioAsset.stopWithFade(fadeOutDuration: fadeOutDuration, toPause: true)
-            } else {
-                audioAsset.pause()
-            }
+            audioAsset.pause()
 
             // Update notification when paused
             if self.showNotification {
@@ -904,22 +979,19 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     /// The `assetId` is read from the call using `Constant.AssetIdKey`. If the asset is currently playing it will be stopped; if `showNotification` is enabled the Now Playing info is cleared and `currentlyPlayingAssetId` is reset. If the asset was created by `playOnce`, it is removed from `playOnceAssets` and its notification metadata is removed. The audio session is ended if appropriate. The call is resolved on success or rejected with an error message on failure.
     @objc func stop(_ call: CAPPluginCall) {
         let audioId = call.getString(Constant.AssetIdKey) ?? ""
-        let fadeOut = call.getBool(Constant.FadeOut) ?? false
-        let fadeOutDuration = call.getDouble(Constant.FadeOutDuration) ?? Double(Constant.DefaultFadeDuration)
 
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard !self.audioList.isEmpty else {
                 call.reject("Audio list is empty")
                 return
             }
 
             do {
-                try self.stopAudio(audioId: audioId, fadeOut: fadeOut, fadeOutDuration: fadeOutDuration)
+                try self.stopAudio(audioId: audioId)
 
-                // Reset current track when stopping the asset that was playing (internal state, not just for notifications)
-                if self.currentlyPlayingAssetId == audioId {
+                // Clear notification when stopped
+                if self.showNotification {
+                    self.clearNowPlayingInfo()
                     self.currentlyPlayingAssetId = nil
                 }
 
@@ -939,8 +1011,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func loop(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
@@ -966,11 +1036,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             if let asset = self.audioList[audioId] as? AudioAsset {
                 asset.unload()
                 self.audioList[audioId] = nil
-
-                // Reset current track if this was the currently playing asset (internal state tracking)
-                if self.currentlyPlayingAssetId == audioId {
-                    self.currentlyPlayingAssetId = nil
-                }
 
                 // Clean up playOnce tracking if this was a playOnce asset
                 if self.playOnceAssets.contains(audioId) {
@@ -999,24 +1064,19 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func setVolume(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
             }
 
             let volume = min(max(call.getFloat(Constant.Volume) ?? Constant.DefaultVolume, Constant.MinVolume), Constant.MaxVolume)
-            let durationSecs = call.getDouble(Constant.FadeDuration) ?? 0.0
-            audioAsset.setVolume(volume: volume as NSNumber, fadeDuration: durationSecs)
+            audioAsset.setVolume(volume: volume as NSNumber)
             call.resolve()
         }
     }
 
     @objc func setRate(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
@@ -1030,8 +1090,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     @objc func isPlaying(_ call: CAPPluginCall) {
         audioQueue.sync {
-            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
-            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
             guard let audioAsset: AudioAsset = self.getAudioAsset(call) else {
                 call.reject("Failed to get audio asset")
                 return
@@ -1050,12 +1108,29 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
+    /// Preloads an audio asset into the plugin's internal registry for later playback.
+    ///
+    /// Accepts a CAPPluginCall containing asset information, validates inputs, stores optional now‑playing metadata, and creates either a lightweight system sound (for non-complex assets) or a full AudioAsset/RemoteAudioAsset (for complex assets). Supports local file paths, file URLs, public bundle resources, and remote URLs (with optional headers).
+    /// - Parameters:
+    ///   - call: CAPPluginCall containing required keys:
+    ///     - "assetId" (String): unique identifier for the asset.
+    ///     - "assetPath" (String): local path, file URL, public bundle resource, or remote URL.
+    ///     - "isUrl" (Bool, optional): treat the provided path as a raw URL when false/omitted for non-complex loads; ignored for complex loads.
+    ///     - For complex loads:
+    ///       - "volume" (Float, optional): initial volume (clamped to valid range).
+    ///       - "channels" (Int, optional): number of audio channels.
+    ///       - "delay" (Float, optional): fade delay.
+    ///     - For remote URLs:
+    ///       - "headers" (Object, optional): HTTP headers to use when loading the remote asset.
+    ///     - "notificationMetadata" (Object, optional): now‑playing metadata with keys "title", "artist", "album", and "artworkUrl".
+    ///   - isComplex: If true, creates a full-featured AudioAsset/RemoteAudioAsset; if false, creates a lightweight system sound identifier.
+    /// - Behavior: Resolves the provided call on successful preload; rejects the call with an error message if validation fails or the asset cannot be created.
     @objc private func preloadAsset(_ call: CAPPluginCall, isComplex complex: Bool) {
         // Common default values to ensure consistency
         let audioId = call.getString(Constant.AssetIdKey) ?? ""
         let channels: Int?
         let volume: Float?
+        let delay: Float?
         var isLocalUrl: Bool = call.getBool("isUrl") ?? false
 
         if audioId == "" {
@@ -1095,9 +1170,11 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         if complex {
             volume = min(max(call.getFloat("volume") ?? Constant.DefaultVolume, Constant.MinVolume), Constant.MaxVolume)
             channels = max(call.getInt("channels") ?? Constant.DefaultChannels, 1)
+            delay = max(call.getFloat("delay") ?? Constant.DefaultFadeDelay, 0.0)
         } else {
             channels = Constant.DefaultChannels
             volume = Constant.DefaultVolume
+            delay = Constant.DefaultFadeDelay
             isLocalUrl = false
         }
 
@@ -1123,7 +1200,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                         let audioAsset = AudioAsset(
                             owner: self,
                             withAssetId: audioId, withPath: basePath, withChannels: channels,
-                            withVolume: volume)
+                            withVolume: volume, withFadeDelay: delay)
                         self.audioList[audioId] = audioAsset
                         call.resolve()
                         return
@@ -1140,14 +1217,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                             }
                         }
                     }
-                    let remoteAudioAsset = RemoteAudioAsset(
-                        owner: self,
-                        withAssetId: audioId,
-                        withPath: assetPath,
-                        withChannels: channels,
-                        withVolume: volume,
-                        withHeaders: headers
-                    )
+                    let remoteAudioAsset = RemoteAudioAsset(owner: self, withAssetId: audioId, withPath: assetPath, withChannels: channels, withVolume: volume, withFadeDelay: delay, withHeaders: headers)
                     self.audioList[audioId] = remoteAudioAsset
                     call.resolve()
                     return
@@ -1183,7 +1253,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     let audioAsset = AudioAsset(
                         owner: self,
                         withAssetId: audioId, withPath: basePath, withChannels: channels,
-                        withVolume: volume)
+                        withVolume: volume, withFadeDelay: delay)
                     self.audioList[audioId] = audioAsset
                 }
             } else {
@@ -1206,14 +1276,16 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     let audioAsset = AudioAsset(
                         owner: self,
                         withAssetId: audioId, withPath: assetPath, withChannels: channels,
-                        withVolume: volume)
+                        withVolume: volume, withFadeDelay: delay)
                     self.audioList[audioId] = audioAsset
                 }
             }
             call.resolve()
         }
     }
-    private func stopAudio(audioId: String, fadeOut: Bool, fadeOutDuration: Double) throws {
+    // swiftlint:enable cyclomatic_complexity function_body_length
+
+    private func stopAudio(audioId: String) throws {
         var asset: AudioAsset?
 
         audioQueue.sync {
@@ -1224,57 +1296,19 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             throw MyError.runtimeError(Constant.ErrorAssetNotFound)
         }
 
-        clearAudioAssetData(for: audioId)
-
-        if fadeOut {
-            audioAsset.stopWithFade(fadeOutDuration: fadeOutDuration)
+        if self.fadeMusic {
+            audioAsset.stopWithFade()
         } else {
             audioAsset.stop()
         }
-    }
-
-    private func clearAudioAssetData(for audioId: String) {
-        audioAssetData[audioId] = nil
-    }
-
-    private func cancelPendingPlay(for audioId: String) {
-        if let task = pendingPlayTasks[audioId] {
-            task.cancel()
-            pendingPlayTasks[audioId] = nil
-        }
-    }
-
-    private func handleFadeOut(for asset: AudioAsset, audioId: String, fadeOutDuration: TimeInterval, fadeOutStartTime: TimeInterval) {
-        let duration = asset.getDuration()
-        if duration <= 0 || !duration.isFinite {
-            logger.warning("Audio asset has no finite duration, skipping fadeOut for %@", audioId)
-            return
-        }
-
-        var startTime = max(duration - fadeOutDuration, 0)
-        if fadeOutStartTime > 0 {
-            startTime = fadeOutStartTime
-        }
-
-        audioAssetData[audioId] = [
-            "fadeOut": true,
-            "fadeOutStartTime": startTime,
-            "fadeOutDuration": fadeOutDuration
-        ]
     }
 
     internal func executeOnAudioQueue(_ block: @escaping () -> Void) {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
             block()  // Already on queue
         } else {
-            if isRunningTests {
-                audioQueue.async {
-                    block()
-                }
-            } else {
-                audioQueue.sync(flags: .barrier) {
-                    block()
-                }
+            audioQueue.sync(flags: .barrier) {
+                block()
             }
         }
     }
@@ -1288,15 +1322,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 "currentTime": currentTime,
                 "assetId": asset.assetId
             ])
-
-            if let fadeData = audioAssetData[asset.assetId],
-               let fadeOut = fadeData["fadeOut"] as? Bool, fadeOut,
-               let fadeOutStartTime = fadeData["fadeOutStartTime"] as? Double,
-               let fadeOutDuration = fadeData["fadeOutDuration"] as? Double,
-               currentTime >= fadeOutStartTime {
-                asset.stopWithFade(fadeOutDuration: fadeOutDuration)
-                audioAssetData[asset.assetId] = nil
-            }
         }
     }
 
@@ -1389,8 +1414,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
-    /// Clears the Now Playing info. Only used when tearing down (deinit); stop/unload do not clear
-    /// so that the next play can overwrite the notification without a race.
     private func clearNowPlayingInfo() {
         DispatchQueue.main.async {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
