@@ -266,6 +266,21 @@ public class RemoteAudioAsset: AudioAsset {
         return result
     }
 
+    override func shouldStopCurrentTimeUpdatesWhenNotPlaying() -> Bool {
+        var shouldStop = true
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self else { return }
+            guard !players.isEmpty && playIndex < players.count else {
+                shouldStop = true
+                return
+            }
+
+            let status = players[playIndex].timeControlStatus
+            shouldStop = status != .waitingToPlayAtSpecifiedRate
+        }
+        return shouldStop
+    }
+
     override func getCurrentTime() -> TimeInterval {
         var result: TimeInterval = 0
         owner?.executeOnAudioQueue { [weak self] in
