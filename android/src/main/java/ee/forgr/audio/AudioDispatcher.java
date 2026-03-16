@@ -12,6 +12,7 @@ import android.content.res.AssetFileDescriptor;
 import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.os.Build;
+import android.os.Looper;
 import android.util.Log;
 import androidx.media3.common.util.UnstableApi;
 
@@ -31,28 +32,41 @@ public class AudioDispatcher
         mediaState = INVALID;
 
         mediaPlayer = new MediaPlayer();
-        mediaPlayer.setOnCompletionListener(this);
-        mediaPlayer.setOnPreparedListener(this);
-        mediaPlayer.setDataSource(
-            assetFileDescriptor.getFileDescriptor(),
-            assetFileDescriptor.getStartOffset(),
-            assetFileDescriptor.getLength()
-        );
-        mediaPlayer.setOnSeekCompleteListener(this);
-        mediaPlayer.setAudioAttributes(
-            new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-        );
-        mediaPlayer.setVolume(volume, volume);
-        currentVolume = volume;
-        mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(1.0f));
-        
-        // Use synchronous prepare() since we're already on a background thread (from NativeAudio.preloadExecutor).
-        // This ensures the MediaPlayer is fully ready before the constructor returns.
-        // CRITICAL: If called on main thread, this could cause ANR; always call from background executor.
-        mediaPlayer.prepare();
+        try {
+            mediaPlayer.setOnCompletionListener(this);
+            mediaPlayer.setOnPreparedListener(this);
+            mediaPlayer.setDataSource(
+                assetFileDescriptor.getFileDescriptor(),
+                assetFileDescriptor.getStartOffset(),
+                assetFileDescriptor.getLength()
+            );
+            mediaPlayer.setOnSeekCompleteListener(this);
+            mediaPlayer.setAudioAttributes(
+                new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            );
+            mediaPlayer.setVolume(volume, volume);
+            currentVolume = volume;
+            mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(1.0f));
+            
+            // Detect if we're on the main thread to avoid ANR
+            if (Looper.getMainLooper() == Looper.myLooper()) {
+                // Running on UI thread (e.g., from playOnce()) - use async prepare
+                Log.w(TAG, "AudioDispatcher constructor called on main thread; using async prepare to avoid ANR");
+                mediaPlayer.prepareAsync();
+            } else {
+                // Running on background thread (e.g., from preloadExecutor) - use synchronous prepare
+                // Use synchronous prepare() since we're already on a background thread (from NativeAudio.preloadExecutor).
+                // This ensures the MediaPlayer is fully ready before the constructor returns.
+                // CRITICAL: If called on main thread, this could cause ANR; always call from background executor.
+                mediaPlayer.prepare();
+            }
+        } catch (Exception ex) {
+            mediaPlayer.release();
+            throw ex;
+        }
     }
 
     public void setOwner(AudioAsset asset) {

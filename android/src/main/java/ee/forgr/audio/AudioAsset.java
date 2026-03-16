@@ -25,6 +25,7 @@ public class AudioAsset implements AutoCloseable {
     protected int playIndex = 0;
     protected final NativeAudio owner;
     protected AudioCompletionListener completionListener;
+    protected Runnable onPreparedListener;
     protected String assetId;
     protected Handler currentTimeHandler;
     protected Runnable currentTimeRunnable;
@@ -63,6 +64,9 @@ public class AudioAsset implements AutoCloseable {
             audioList.add(audioDispatcher);
             if (audioChannelNum == 1) audioDispatcher.setOwner(this);
         }
+
+        // Notify that local asset is prepared (synchronous prepare in AudioDispatcher)
+        notifyPrepared();
     }
 
     public void dispatchComplete() {
@@ -248,6 +252,16 @@ public class AudioAsset implements AutoCloseable {
     protected void notifyCompletion() {
         if (completionListener != null) {
             completionListener.onCompletion(this.assetId);
+        }
+    }
+
+    public void setOnPreparedListener(Runnable listener) {
+        this.onPreparedListener = listener;
+    }
+
+    protected void notifyPrepared() {
+        if (onPreparedListener != null) {
+            onPreparedListener.run();
         }
     }
 

@@ -96,6 +96,7 @@ public class StreamAudioAsset extends AudioAsset {
                     logger.debug("Stream state changed to: " + getStateString(state));
                     if (state == Player.STATE_READY && !isPrepared) {
                         isPrepared = true;
+                        notifyPrepared(); // Notify that stream is ready
                         if (player.isCurrentMediaItemLive()) {
                             player.seekToDefaultPosition();
                         }

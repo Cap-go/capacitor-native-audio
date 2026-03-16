@@ -123,6 +123,7 @@ public class RemoteAudioAsset extends AudioAsset {
                     Log.d(TAG, "Player state changed to: " + getStateString(playbackState));
                     if (playbackState == Player.STATE_READY) {
                         isPrepared = true;
+                        notifyPrepared(); // Notify that asset is ready
                         long duration = player.getDuration();
                         Log.d(TAG, "Duration available on STATE_READY: " + duration + " ms");
                         if (duration != androidx.media3.common.C.TIME_UNSET) {

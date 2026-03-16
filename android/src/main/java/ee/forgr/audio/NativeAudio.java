@@ -111,11 +111,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private boolean backgroundPlayback = false;
 
     // Background executor for preload operations to avoid ANR on main thread
-    private ExecutorService preloadExecutor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "NativeAudio-Preload");
-        t.setDaemon(false); // Ensure preload completes even if app goes to background
-        return t;
-    });
+    private ExecutorService preloadExecutor;
+
+    /**
+     * Get or create the preload executor thread. Uses lazy initialization and recreates if needed after deinit.
+     */
+    private ExecutorService getPreloadExecutor() {
+        if (preloadExecutor == null) {
+            preloadExecutor = Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "NativeAudio-Preload");
+                t.setDaemon(false); // Ensure preload completes even if app goes to background
+                return t;
+            });
+        }
+        return preloadExecutor;
+    }
 
     /**
      * Initializes plugin runtime state by obtaining the system {@link AudioManager}, preparing the asset map,
@@ -313,7 +323,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     @PluginMethod
     public void preload(final PluginCall call) {
         // Dispatch preload to background thread to avoid ANR during MediaPlayer.prepare()
-        preloadExecutor.execute(new Runnable() {
+        getPreloadExecutor().execute(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -1015,7 +1025,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         data.put("assetId", assetId);
         notifyListeners("preloadReady", data);
     }
-     *
+
+    /**
      * The emitted event payload contains `assetId` and `currentTime` (in seconds, rounded to the nearest 0.1).
      *
      * @param assetId     the identifier of the audio asset
@@ -1237,10 +1248,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
             // Set completion listener and add to asset list
             asset.setCompletionListener(this::dispatchComplete);
-            audioAssetList.put(audioId, asset);
             
-            // Dispatch event to notify JS that preload is complete
-            dispatchPreloadReady(audioId);
+            // Register listener to dispatch preloadReady event when asset is actually prepared
+            // For local assets, this fires immediately. For remote/streaming assets, it fires when STATE_READY is reached.
+            asset.setOnPreparedListener(() -> this.dispatchPreloadReady(audioId));
+            
+            audioAssetList.put(audioId, asset);
             
             call.resolve(status);
         } catch (Exception ex) {
@@ -1501,6 +1514,20 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             if (originalAudioMode != AudioManager.MODE_INVALID && this.audioManager != null) {
                 this.audioManager.setMode(originalAudioMode);
                 originalAudioMode = AudioManager.MODE_INVALID;
+            }
+
+            // Shutdown the preload executor to prevent thread leaks
+            if (preloadExecutor != null && !preloadExecutor.isShutdown()) {
+                preloadExecutor.shutdownNow();
+                try {
+                    // Wait briefly for tasks to terminate
+                    if (!preloadExecutor.awaitTermination(100, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        Log.w(TAG, "Preload executor did not terminate within timeout");
+                    }
+                } catch (InterruptedException e) {
+                    Log.w(TAG, "Interrupted waiting for preload executor shutdown", e);
+                }
+                preloadExecutor = null;
             }
 
             call.resolve();
