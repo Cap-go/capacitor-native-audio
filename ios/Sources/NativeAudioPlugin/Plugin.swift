@@ -949,7 +949,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     }
 
     @objc func resume(_ call: CAPPluginCall) {
-        let audioId = call.getString(Constant.AssetIdKey) ?? ""
         audioQueue.sync {
             self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
             defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
