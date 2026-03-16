@@ -1347,6 +1347,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         clearAudioAssetData(for: audioId)
+        cancelPendingPlay(for: audioId)
 
         if fadeOut {
             audioAsset.stopWithFade(fadeOutDuration: fadeOutDuration)
@@ -1356,11 +1357,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     }
 
     private func clearAudioAssetData(for audioId: String) {
-        audioAssetData.removeValue(forKey: audioId)
-        if let task = pendingPlayTasks[audioId] {
-            task.cancel()
-            pendingPlayTasks.removeValue(forKey: audioId)
-        }
+        audioAssetData[audioId] = nil
     }
 
     private func cancelPendingPlay(for audioId: String) {
