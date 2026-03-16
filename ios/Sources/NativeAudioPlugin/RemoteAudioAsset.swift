@@ -1,9 +1,6 @@
 import AVFoundation
 
-/**
- * RemoteAudioAsset extends AudioAsset to handle remote (URL-based) audio files
- * Provides network audio playback using AVPlayer instead of AVAudioPlayer
- */
+// swiftlint:disable:next type_body_length
 public class RemoteAudioAsset: AudioAsset {
     var playerItems: [AVPlayerItem] = []
     var players: [AVPlayer] = []
@@ -11,172 +8,147 @@ public class RemoteAudioAsset: AudioAsset {
     var notificationObservers: [NSObjectProtocol] = []
     var duration: TimeInterval = 0
     var asset: AVURLAsset?
+    private var logger = Logger(logTag: "RemoteAudioAsset")
+    static let staticLogger = Logger(logTag: "RemoteAudioAsset")
 
-    init(owner: NativeAudio, withAssetId assetId: String, withPath path: String!, withChannels channels: Int!, withVolume volume: Float!, withFadeDelay delay: Float!, withHeaders headers: [String: String]?) {
-        super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0, withFadeDelay: delay ?? 0.0)
+    init(owner: NativeAudio, withAssetId assetId: String, withPath path: String, withChannels channels: Int?, withVolume volume: Float?, withHeaders headers: [String: String]?) {
+        super.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels ?? 1, withVolume: volume ?? 1.0)
 
-        owner.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            guard let url = URL(string: path ?? "") else {
-                print("Invalid URL: \(String(describing: path))")
+        let setupBlock = { [weak self] in
+            guard let self else { return }
+            guard let url = URL(string: path) else {
+                self.logger.error("Invalid URL: %@", String(describing: path))
                 return
             }
 
-            // Build AVURLAsset options with custom headers if provided
             var options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
-            if let headers = headers, !headers.isEmpty {
+            if let headers, !headers.isEmpty {
                 options["AVURLAssetHTTPHeaderFieldsKey"] = headers
             }
 
             let asset = AVURLAsset(url: url, options: options)
             self.asset = asset
-
-            // Limit channels to a reasonable maximum to prevent resource issues
             let channelCount = min(max(channels ?? Constant.DefaultChannels, 1), Constant.MaxChannels)
 
             for _ in 0..<channelCount {
                 let playerItem = AVPlayerItem(asset: asset)
                 let player = AVPlayer(playerItem: playerItem)
-                // Apply volume constraints consistent with AudioAsset
                 player.volume = self.initialVolume
                 player.rate = 1.0
                 self.playerItems.append(playerItem)
                 self.players.append(player)
 
-                // Add observer for duration
                 let durationObserver = playerItem.observe(\.status) { [weak self] item, _ in
-                    guard let strongSelf = self else { return }
-                    strongSelf.owner?.executeOnAudioQueue {
+                    guard let self else { return }
+                    self.owner?.executeOnAudioQueue {
                         if item.status == .readyToPlay {
-                            strongSelf.duration = item.duration.seconds
+                            self.duration = item.duration.seconds
                         }
                     }
                 }
                 self.playerObservers.append(durationObserver)
 
-                // Add observer for playback finished
                 let observer = player.observe(\.timeControlStatus) { [weak self, weak player] observedPlayer, _ in
-                    guard let strongSelf = self,
-                          let strongPlayer = player,
-                          strongPlayer === observedPlayer else { return }
-
-                    if strongPlayer.timeControlStatus == .paused &&
-                        (strongPlayer.currentItem?.currentTime() == strongPlayer.currentItem?.duration ||
-                            strongPlayer.currentItem?.duration == .zero) {
-                        strongSelf.playerDidFinishPlaying(player: strongPlayer)
+                    guard let self, let player, player === observedPlayer else { return }
+                    if player.timeControlStatus == .paused &&
+                        (player.currentItem?.currentTime() == player.currentItem?.duration || player.currentItem?.duration == .zero) {
+                        self.playerDidFinishPlaying(player: player)
                     }
                 }
                 self.playerObservers.append(observer)
             }
         }
+
+        if owner.isRunningTests {
+            setupBlock()
+        } else {
+            owner.executeOnAudioQueue(setupBlock)
+        }
+    }
+
+    // Backward-compatible initializer signature (delegates to primary init)
+    convenience init(owner: NativeAudio, withAssetId assetId: String, withPath path: String, withChannels channels: Int?, withVolume volume: Float?, withFadeDelay _: Float?, withHeaders headers: [String: String]?) {
+        self.init(owner: owner, withAssetId: assetId, withPath: path, withChannels: channels, withVolume: volume, withHeaders: headers)
     }
 
     deinit {
-        // Clean up observers
         for observer in playerObservers {
             observer.invalidate()
         }
-
-        for observer in notificationObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-
-        // Clean up players
+        cleanupNotificationObservers()
         for player in players {
             player.pause()
         }
-
         playerItems = []
         players = []
         playerObservers = []
-        notificationObservers = []
+        cancelFade()
     }
 
-    /// Notifies listeners that this asset finished playing and invokes the optional completion callback if set.
-    ///
-    /// Handle a player's end-of-playback by notifying listeners and invoking the optional completion callback.
-    /// Dispatches the notification on the owner's audio queue and sends a `complete` event containing the assetId.
-    /// - Parameter player: The `AVPlayer` instance that finished playback.
     func playerDidFinishPlaying(player: AVPlayer) {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            self.owner?.notifyListeners("complete", data: [
-                "assetId": self.assetId
-            ])
-
-            // Invoke completion callback if set
+            guard let self else { return }
+            self.owner?.notifyListeners("complete", data: ["assetId": self.assetId])
+            self.dispatchedCompleteMap[self.assetId] = true
             self.onComplete?()
         }
     }
 
-    override func play(time: TimeInterval, delay: TimeInterval) {
+    override func play(time: TimeInterval, volume: Float? = nil) {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             guard !players.isEmpty else { return }
-
-            // Reset play index if it's out of bounds
             if playIndex >= players.count {
                 playIndex = 0
             }
-
+            cancelFade()
             let player = players[playIndex]
-
-            // Ensure non-negative values for time and delay
-            let validTime = max(time, 0)
-            let validDelay = max(delay, 0)
-
-            if validDelay > 0 {
-                // Convert delay to CMTime and add to current time
-                let currentTime = player.currentTime()
-                let delayTime = CMTimeMakeWithSeconds(validDelay, preferredTimescale: currentTime.timescale)
-                let timeToPlay = CMTimeAdd(currentTime, delayTime)
-                player.seek(to: timeToPlay)
-            } else {
-                player.seek(to: CMTimeMakeWithSeconds(validTime, preferredTimescale: 1))
-            }
+            player.seek(to: CMTimeMakeWithSeconds(max(time, 0), preferredTimescale: 1))
+            player.volume = volume ?? self.initialVolume
             player.play()
             playIndex = (playIndex + 1) % players.count
             startCurrentTimeUpdates()
         }
     }
 
+    // Backward-compatible signature
+    override func play(time: TimeInterval, delay: TimeInterval) {
+        let validDelay = max(delay, 0)
+        if validDelay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + validDelay) { [weak self] in
+                self?.play(time: time, volume: nil)
+            }
+        } else {
+            play(time: time, volume: nil)
+        }
+    }
+
     override func pause() {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             guard !players.isEmpty && playIndex < players.count else { return }
-
-            let player = players[playIndex]
-            player.pause()
+            cancelFade()
+            players[playIndex].pause()
             stopCurrentTimeUpdates()
         }
     }
 
     override func resume() {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             guard !players.isEmpty && playIndex < players.count else { return }
 
             let player = players[playIndex]
             player.play()
-
-            // Add notification observer for when playback stops
             cleanupNotificationObservers()
-
-            // Capture weak reference to self
             let observer = NotificationCenter.default.addObserver(
                 forName: NSNotification.Name.AVPlayerItemDidPlayToEndTime,
                 object: player.currentItem,
-                queue: OperationQueue.main) { [weak self, weak player] notification in
-                guard let strongSelf = self, let strongPlayer = player else { return }
-
-                if let currentItem = notification.object as? AVPlayerItem,
-                   strongPlayer.currentItem === currentItem {
-                    strongSelf.playerDidFinishPlaying(player: strongPlayer)
+                queue: OperationQueue.main
+            ) { [weak self, weak player] notification in
+                guard let self, let player else { return }
+                if let currentItem = notification.object as? AVPlayerItem, player.currentItem === currentItem {
+                    self.playerDidFinishPlaying(player: player)
                 }
             }
             notificationObservers.append(observer)
@@ -184,106 +156,65 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    /// Stops playback on all player channels and resets them to the beginning.
-    ///
-    /// Stops periodic current-time updates, pauses each `AVPlayer`, seeks each player to time zero,
-    /// sets each player's `actionAtItemEnd` to `.pause`, and resets `playIndex` to `0`.
-    /// The operations are dispatched on the owner's audio queue.
     override func stop() {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             stopCurrentTimeUpdates()
-
+            cancelFade()
             for player in players {
-                // First pause
                 player.pause()
-                // Then reset to beginning
                 player.seek(to: .zero, completionHandler: { _ in
-                    // Reset any loop settings
                     player.actionAtItemEnd = .pause
                 })
             }
-            // Reset playback state
             playIndex = 0
+            self.owner?.notifyListeners("complete", data: ["assetId": self.assetId as Any])
+            self.dispatchedCompleteMap[self.assetId] = true
         }
     }
 
-    /// Configures all player channels to loop and starts playback for the current channel.
-    ///
-    /// Configures all player channels to loop playback and starts playback on the current channel.
-    ///
-    /// Cleans existing end-of-playback observers, sets each player's end action to `.none`, and registers observers that seek the finished item back to the start and resume playback when it reaches its end. Seeks and starts the player at `playIndex`, and starts periodic current-time updates. This work is performed on the owner's audio queue.
     override func loop() {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             cleanupNotificationObservers()
-
             for (index, player) in players.enumerated() {
                 player.actionAtItemEnd = .none
-
                 guard let playerItem = player.currentItem else { continue }
-
                 let observer = NotificationCenter.default.addObserver(
                     forName: .AVPlayerItemDidPlayToEndTime,
                     object: playerItem,
-                    queue: OperationQueue.main) { [weak self, weak player] notification in
-                    guard let strongPlayer = player,
-                          let strongSelf = self,
+                    queue: OperationQueue.main
+                ) { [weak player] notification in
+                    guard let player,
                           let item = notification.object as? AVPlayerItem,
-                          strongPlayer.currentItem === item else { return }
-
-                    strongPlayer.seek(to: .zero)
-                    strongPlayer.play()
+                          player.currentItem === item else { return }
+                    player.seek(to: .zero)
+                    player.play()
                 }
-
                 notificationObservers.append(observer)
-
                 if index == playIndex {
                     player.seek(to: .zero)
                     player.play()
                 }
             }
-
             startCurrentTimeUpdates()
         }
     }
 
-    /// Removes all NotificationCenter observers tracked by this asset and clears the internal observer list.
-    ///
-    /// Removes all NotificationCenter observers tracked by this instance and clears the internal observer list.
-    ///
-    /// This unregisters each observer previously added to NotificationCenter.default and resets `notificationObservers` to an empty array.
-    internal func cleanupNotificationObservers() {
+    public func cleanupNotificationObservers() {
         for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
         }
         notificationObservers = []
     }
 
-    @objc func playerItemDidReachEnd(notification: Notification) {
-        owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            if let playerItem = notification.object as? AVPlayerItem,
-               let player = players.first(where: { $0.currentItem == playerItem }) {
-                player.seek(to: .zero)
-                player.play()
-            }
-        }
-    }
-
     override func unload() {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
+            cancelFade()
             stopCurrentTimeUpdates()
             stop()
-
             cleanupNotificationObservers()
-
-            // Remove KVO observers
             for observer in playerObservers {
                 observer.invalidate()
             }
@@ -293,23 +224,28 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
-    override func setVolume(volume: NSNumber!) {
+    override func setVolume(volume: NSNumber, fadeDuration: Double) {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            // Ensure volume is in valid range (0.0-1.0)
+            guard let self else { return }
+            cancelFade()
             let validVolume = min(max(volume.floatValue, Constant.MinVolume), Constant.MaxVolume)
             for player in players {
-                player.volume = validVolume
+                if isPlaying() && fadeDuration > 0 {
+                    fadeTo(player: player, fadeOutDuration: fadeDuration, targetVolume: validVolume)
+                } else {
+                    player.volume = validVolume
+                }
             }
         }
     }
 
-    override func setRate(rate: NSNumber!) {
-        owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
+    override func setVolume(volume: NSNumber) {
+        setVolume(volume: volume, fadeDuration: 0)
+    }
 
-            // Ensure rate is in valid range
+    override func setRate(rate: NSNumber) {
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self else { return }
             let validRate = min(max(rate.floatValue, Constant.MinRate), Constant.MaxRate)
             for player in players {
                 player.rate = validRate
@@ -320,14 +256,12 @@ public class RemoteAudioAsset: AudioAsset {
     override func isPlaying() -> Bool {
         var result = false
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             guard !players.isEmpty && playIndex < players.count else {
                 result = false
                 return
             }
-            let player = players[playIndex]
-            result = player.timeControlStatus == .playing
+            result = players[playIndex].timeControlStatus == .playing
         }
         return result
     }
@@ -335,14 +269,9 @@ public class RemoteAudioAsset: AudioAsset {
     override func getCurrentTime() -> TimeInterval {
         var result: TimeInterval = 0
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            guard !players.isEmpty && playIndex < players.count else {
-                result = 0
-                return
-            }
-            let player = players[playIndex]
-            result = player.currentTime().seconds
+            guard let self else { return }
+            guard !players.isEmpty && playIndex < players.count else { return }
+            result = players[playIndex].currentTime().seconds
         }
         return result
     }
@@ -350,12 +279,8 @@ public class RemoteAudioAsset: AudioAsset {
     override func getDuration() -> TimeInterval {
         var result: TimeInterval = 0
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            guard !players.isEmpty && playIndex < players.count else {
-                result = 0
-                return
-            }
+            guard let self else { return }
+            guard !players.isEmpty && playIndex < players.count else { return }
             let player = players[playIndex]
             if player.currentItem?.duration == CMTime.indefinite {
                 result = 0
@@ -366,129 +291,48 @@ public class RemoteAudioAsset: AudioAsset {
         return result
     }
 
-    override func playWithFade(time: TimeInterval) {
+    override func playWithFade(time: TimeInterval, volume: Float?, fadeInDuration: TimeInterval) {
         owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
+            guard let self else { return }
             guard !players.isEmpty && playIndex < players.count else { return }
-
             let player = players[playIndex]
-
-            if player.timeControlStatus != .playing {
-                player.seek(to: CMTimeMakeWithSeconds(time, preferredTimescale: 1))
-                player.volume = 0 // Start with volume at 0
-                player.play()
-                playIndex = (playIndex + 1) % players.count
-                startCurrentTimeUpdates()
-
-                // Start fade-in using the parent class method
-                startVolumeRamp(from: 0, to: initialVolume, player: player)
-            } else {
-                if player.volume < initialVolume {
-                    // Continue fade-in if already in progress
-                    startVolumeRamp(from: player.volume, to: initialVolume, player: player)
+            player.seek(to: CMTimeMakeWithSeconds(time, preferredTimescale: 1)) { [weak self] _ in
+                guard let self else { return }
+                DispatchQueue.main.async {
+                    if player.timeControlStatus != .playing {
+                        player.volume = 0
+                        player.play()
+                        self.fadeIn(player: player, fadeInDuration: fadeInDuration, targetVolume: volume ?? self.initialVolume)
+                        self.playIndex = (self.playIndex + 1) % self.players.count
+                        self.startCurrentTimeUpdates()
+                    }
                 }
+            }
+        }
+    }
+
+    override func playWithFade(time: TimeInterval) {
+        playWithFade(time: time, volume: nil, fadeInDuration: TimeInterval(Constant.DefaultFadeDuration))
+    }
+
+    override func stopWithFade(fadeOutDuration: TimeInterval, toPause: Bool = false) {
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self else { return }
+            guard !players.isEmpty && playIndex < players.count else {
+                if !toPause { stop() }
+                return
+            }
+            let player = players[playIndex]
+            if player.timeControlStatus == .playing {
+                fadeOut(player: player, fadeOutDuration: fadeOutDuration, toPause: toPause)
+            } else if !toPause {
+                stop()
             }
         }
     }
 
     override func stopWithFade() {
-        owner?.executeOnAudioQueue { [weak self] in
-            guard let self = self else { return }
-
-            guard !players.isEmpty && playIndex < players.count else {
-                stop()
-                return
-            }
-
-            let player = players[playIndex]
-
-            if player.timeControlStatus == .playing {
-                // Use parent class fade method
-                startVolumeRamp(from: player.volume, to: 0, player: player)
-
-                // Schedule the stop when fade is complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(self.FADEDELAY * 1000))) { [weak self, weak player] in
-                    guard let strongSelf = self, let strongPlayer = player else { return }
-
-                    if strongPlayer.volume < strongSelf.FADESTEP {
-                        strongSelf.stop()
-                    }
-                }
-            } else {
-                stop()
-            }
-        }
+        stopWithFade(fadeOutDuration: TimeInterval(Constant.DefaultFadeDuration), toPause: false)
     }
 
-    static func clearCache() {
-        DispatchQueue.global(qos: .background).sync {
-            let urls = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-            if let cachePath = urls.first {
-                do {
-                    let fileURLs = try FileManager.default.contentsOfDirectory(at: cachePath, includingPropertiesForKeys: nil)
-                    // Clear all audio file types
-                    let audioExtensions = ["mp3", "wav", "aac", "m4a", "ogg", "mp4", "caf", "aiff"]
-                    for fileURL in fileURLs where audioExtensions.contains(fileURL.pathExtension.lowercased()) {
-                        try FileManager.default.removeItem(at: fileURL)
-                    }
-                } catch {
-                    print("Error clearing audio cache: \(error)")
-                }
-            }
-        }
-    }
-
-    /// Gradually adjusts the given player's volume from a start level to an end level over the configured fade duration.
-    ///
-    /// The method stops any existing fade timer, sets the player's volume to `startVolume`, and schedules a `Timer` on the main run loop that increments the volume in steps determined by `FADESTEP` and `FADEDELAY`. When the ramp completes the player's volume is set to `endVolume` and the internal `fadeTimer` reference is cleared.
-    /// - Parameters:
-    ///   - startVolume: The initial volume level to apply before beginning the ramp (typically 0.0–1.0).
-    ///   - endVolume: The target volume level to reach at the end of the ramp (typically 0.0–1.0).
-    ///   - player: The `AVPlayer` whose `volume` property will be adjusted.
-    private func startVolumeRamp(from startVolume: Float, to endVolume: Float, player: AVPlayer) {
-        player.volume = startVolume
-
-        // Calculate steps
-        let steps = abs(endVolume - startVolume) / FADESTEP
-        guard steps > 0 else { return }
-
-        let timeInterval = FADEDELAY / steps
-        var currentStep = 0
-        let totalSteps = Int(ceil(steps))
-
-        stopFadeTimer()
-
-        // Ensure timer creation happens on main thread
-        DispatchQueue.main.async { [weak self, weak player] in
-            guard let self = self else { return }
-
-            self.fadeTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(timeInterval), repeats: true) { [weak self, weak player] timer in
-                guard let strongPlayer = player, let strongSelf = self else {
-                    timer.invalidate()
-                    return
-                }
-
-                currentStep += 1
-                let progress = Float(currentStep) / Float(totalSteps)
-                let newVolume = startVolume + progress * (endVolume - startVolume)
-
-                strongPlayer.volume = newVolume
-
-                if currentStep >= totalSteps {
-                    strongPlayer.volume = endVolume
-                    timer.invalidate()
-
-                    // Update timer reference on main thread
-                    DispatchQueue.main.async {
-                        strongSelf.fadeTimer = nil
-                    }
-                }
-            }
-
-            if let timer = self.fadeTimer {
-                RunLoop.current.add(timer, forMode: .common)
-            }
-        }
-    }
 }

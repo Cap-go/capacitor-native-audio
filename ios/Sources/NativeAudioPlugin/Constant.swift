@@ -8,11 +8,19 @@
 
 public class Constant {
     // Parameter keys
-    public static let FadeKey = "fade"
+    public static let FadeKey = "fade" // legacy global fade toggle
+    public static let FadeIn = "fadeIn"
+    public static let FadeOut = "fadeOut"
+    public static let FadeInDuration = "fadeInDuration"
+    public static let FadeOutDuration = "fadeOutDuration"
+    public static let FadeOutStartTime = "fadeOutStartTime"
+    public static let FadeDuration = "duration"
     public static let FocusAudio = "focus"
-    public static let AssetPathKey = "assetPath"
-    public static let AssetIdKey = "assetId"
+    public static let AssetPath = "assetPath"
+    public static let AssetId = "assetId"
     public static let Volume = "volume"
+    public static let Time = "time"
+    public static let Delay = "delay"
     public static let Rate = "rate"
     public static let Loop = "loop"
     public static let Background = "background"
@@ -25,7 +33,7 @@ public class Constant {
     public static let DefaultVolume: Float = 1.0
     public static let DefaultRate: Float = 1.0
     public static let DefaultChannels: Int = 1
-    public static let DefaultFadeDelay: Float = 1.0
+    public static let DefaultFadeDuration: Float = 1.0
     public static let DefaultSkipInterval: TimeInterval = 15.0
     public static let MinRate: Float = 0.25
     public static let MaxRate: Float = 4.0
@@ -38,4 +46,9 @@ public class Constant {
     public static let ErrorAssetPath = "Asset Path is missing"
     public static let ErrorAssetNotFound = "Asset is not loaded"
     public static let ErrorAssetAlreadyLoaded = "Asset is already loaded"
+
+    // Backward compatibility aliases
+    public static let AssetPathKey = AssetPath
+    public static let AssetIdKey = AssetId
+    public static let DefaultFadeDelay = DefaultFadeDuration
 }

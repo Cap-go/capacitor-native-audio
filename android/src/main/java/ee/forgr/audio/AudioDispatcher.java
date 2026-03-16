@@ -13,7 +13,9 @@ import android.media.AudioAttributes;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.util.Log;
+import androidx.media3.common.util.UnstableApi;
 
+@UnstableApi
 public class AudioDispatcher
     implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnSeekCompleteListener
 {
@@ -22,6 +24,8 @@ public class AudioDispatcher
     private final MediaPlayer mediaPlayer;
     private int mediaState;
     private AudioAsset owner;
+
+    private float currentVolume = 1.0f;
 
     public AudioDispatcher(AssetFileDescriptor assetFileDescriptor, float volume) throws Exception {
         mediaState = INVALID;
@@ -42,6 +46,7 @@ public class AudioDispatcher
                 .build()
         );
         mediaPlayer.setVolume(volume, volume);
+        currentVolume = volume;
         mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(1.0f));
         mediaPlayer.prepare();
     }
@@ -92,6 +97,11 @@ public class AudioDispatcher
 
     public void setVolume(float volume) throws Exception {
         mediaPlayer.setVolume(volume, volume);
+        currentVolume = volume;
+    }
+
+    public float getVolume() {
+        return currentVolume;
     }
 
     public void setRate(float rate) throws Exception {
@@ -182,7 +192,17 @@ public class AudioDispatcher
         }
     }
 
-    public boolean isPlaying() throws Exception {
-        return mediaPlayer.isPlaying();
+    public boolean isPlaying() {
+        boolean playing = false;
+        try {
+            playing = mediaPlayer.isPlaying();
+        } catch (IllegalStateException ex) {
+            Log.v(TAG, "Caught exception while checking if audio is playing: " + ex.getLocalizedMessage());
+        }
+        return playing;
+    }
+
+    public boolean isPaused() {
+        return mediaState == PAUSE;
     }
 }

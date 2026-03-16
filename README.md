@@ -158,7 +158,7 @@ npx cap sync
 ## Supported methods
 
 | Name           | Android | iOS | Web |
-| :------------- | :------ | :-- | :-- |
+|:---------------| :------ | :-- | :-- |
 | configure      | ✅      | ✅  | ❌  |
 | preload        | ✅      | ✅  | ✅  |
 | play           | ✅      | ✅  | ✅  |
@@ -169,6 +169,7 @@ npx cap sync
 | unload         | ✅      | ✅  | ✅  |
 | setVolume      | ✅      | ✅  | ✅  |
 | getDuration    | ✅      | ✅  | ✅  |
+| setCurrentTime | ✅      | ✅  | ✅  |
 | getCurrentTime | ✅      | ✅  | ✅  |
 | isPlaying      | ✅      | ✅  | ✅  |
 
@@ -448,11 +449,24 @@ NativeAudio.preload({
  * This method will play the loaded audio file if present in the memory.
  * @param assetId - identifier of the asset
  * @param time - (optional) play with seek. example: 6.0 - start playing track from 6 sec
+ * @param delay - (optional) delay the audio. default is 0s
+ * @param fadeIn - (optional) whether fade in the audio. default is false
+ * @param fadeOut - (optional) whether fade out the audio. default is false
+ * @param fadeInDuration - (optional) fade in duration in seconds. only used if fadeIn is true. default is 1s
+ * @param fadeOutDuration - (optional) fade out duration in seconds. only used if fadeOut is true. default is 1s
+ * @param fadeOutStartTime - (optional) time in seconds from the start of the audio to start fading out. only used if fadeOut is true. default is fadeOutDuration before end of audio.
  * @returns void
  */
 NativeAudio.play({
     assetId: 'fire',
     // time: 6.0 - seek time
+    // volume: 0.4,
+    // delay: 1.0,
+    // fadeIn: true,
+    // fadeOut: true,
+    // fadeInDuration: 2,
+    // fadeOutDuration: 2
+    // fadeOutStartTime: 2
 });
 
 /**
@@ -468,10 +482,14 @@ NativeAudio.loop({
 /**
  * This method will stop the audio file if it's currently playing.
  * @param assetId - identifier of the asset
+ * @param fadeOut - (optional) whether fade out the audio before stopping. default is false
+ * @param fadeOutDuration - (optional) fade out duration in seconds. default is 1s
  * @returns void
  */
 NativeAudio.stop({
   assetId: 'fire',
+  // fadeOut: true,
+  // fadeOutDuration: 2
 });
 
 /**
@@ -487,11 +505,13 @@ NativeAudio.unload({
  * This method will set the new volume for a audio file.
  * @param assetId - identifier of the asset
  *        volume - numerical value of the volume between 0.1 - 1.0 default 1.0
+ *        duration - time over which to fade to the target volume, in seconds. default is 0s (immediate)
  * @returns void
  */
 NativeAudio.setVolume({
   assetId: 'fire',
   volume: 0.4,
+  // duration: 2
 });
 
 /**
@@ -511,9 +531,19 @@ NativeAudio.getDuration({
  */
 NativeAudio.getCurrentTime({
   assetId: 'fire'
-});
+})
 .then(result => {
   console.log(result.currentTime);
+})
+
+/**
+ * this method will set the current time of a playing audio file.
+ * @param assetId - identifier of the asset
+*  time - time to set the audio, in seconds
+ */
+NativeAudio.setCurrentTime({
+  assetId: 'fire',
+  time: 6.0
 })
 
 /**
@@ -631,14 +661,14 @@ Check if an audio file is preloaded
 ### play(...)
 
 ```typescript
-play(options: { assetId: string; time?: number; delay?: number; }) => Promise<void>
+play(options: AssetPlayOptions) => Promise<void>
 ```
 
 Play an audio file
 
-| Param         | Type                                                             |
-| ------------- | ---------------------------------------------------------------- |
-| **`options`** | <code>{ assetId: string; time?: number; delay?: number; }</code> |
+| Param         | Type                                                          |
+| ------------- | ------------------------------------------------------------- |
+| **`options`** | <code><a href="#assetplayoptions">AssetPlayOptions</a></code> |
 
 **Since:** 5.0.0
 
@@ -648,14 +678,14 @@ Play an audio file
 ### pause(...)
 
 ```typescript
-pause(options: Assets) => Promise<void>
+pause(options: AssetPauseOptions) => Promise<void>
 ```
 
 Pause an audio file
 
-| Param         | Type                                      |
-| ------------- | ----------------------------------------- |
-| **`options`** | <code><a href="#assets">Assets</a></code> |
+| Param         | Type                                                            |
+| ------------- | --------------------------------------------------------------- |
+| **`options`** | <code><a href="#assetpauseoptions">AssetPauseOptions</a></code> |
 
 **Since:** 5.0.0
 
@@ -665,14 +695,14 @@ Pause an audio file
 ### resume(...)
 
 ```typescript
-resume(options: Assets) => Promise<void>
+resume(options: AssetResumeOptions) => Promise<void>
 ```
 
 Resume an audio file
 
-| Param         | Type                                      |
-| ------------- | ----------------------------------------- |
-| **`options`** | <code><a href="#assets">Assets</a></code> |
+| Param         | Type                                                              |
+| ------------- | ----------------------------------------------------------------- |
+| **`options`** | <code><a href="#assetresumeoptions">AssetResumeOptions</a></code> |
 
 **Since:** 5.0.0
 
@@ -699,14 +729,14 @@ Stop an audio file
 ### stop(...)
 
 ```typescript
-stop(options: Assets) => Promise<void>
+stop(options: AssetStopOptions) => Promise<void>
 ```
 
 Stop an audio file
 
-| Param         | Type                                      |
-| ------------- | ----------------------------------------- |
-| **`options`** | <code><a href="#assets">Assets</a></code> |
+| Param         | Type                                                          |
+| ------------- | ------------------------------------------------------------- |
+| **`options`** | <code><a href="#assetstopoptions">AssetStopOptions</a></code> |
 
 **Since:** 5.0.0
 
@@ -733,14 +763,14 @@ Unload an audio file
 ### setVolume(...)
 
 ```typescript
-setVolume(options: { assetId: string; volume: number; }) => Promise<void>
+setVolume(options: AssetVolume) => Promise<void>
 ```
 
 Set the volume of an audio file
 
-| Param         | Type                                              |
-| ------------- | ------------------------------------------------- |
-| **`options`** | <code>{ assetId: string; volume: number; }</code> |
+| Param         | Type                                                |
+| ------------- | --------------------------------------------------- |
+| **`options`** | <code><a href="#assetvolume">AssetVolume</a></code> |
 
 **Since:** 5.0.0
 
@@ -750,14 +780,14 @@ Set the volume of an audio file
 ### setRate(...)
 
 ```typescript
-setRate(options: { assetId: string; rate: number; }) => Promise<void>
+setRate(options: AssetRate) => Promise<void>
 ```
 
 Set the rate of an audio file
 
 | Param         | Type                                            |
 | ------------- | ----------------------------------------------- |
-| **`options`** | <code>{ assetId: string; rate: number; }</code> |
+| **`options`** | <code><a href="#assetrate">AssetRate</a></code> |
 
 **Since:** 5.0.0
 
@@ -767,14 +797,14 @@ Set the rate of an audio file
 ### setCurrentTime(...)
 
 ```typescript
-setCurrentTime(options: { assetId: string; time: number; }) => Promise<void>
+setCurrentTime(options: AssetSetTime) => Promise<void>
 ```
 
 Set the current time of an audio file
 
-| Param         | Type                                            |
-| ------------- | ----------------------------------------------- |
-| **`options`** | <code>{ assetId: string; time: number; }</code> |
+| Param         | Type                                                  |
+| ------------- | ----------------------------------------------------- |
+| **`options`** | <code><a href="#assetsettime">AssetSetTime</a></code> |
 
 **Since:** 6.5.0
 
@@ -784,14 +814,14 @@ Set the current time of an audio file
 ### getCurrentTime(...)
 
 ```typescript
-getCurrentTime(options: { assetId: string; }) => Promise<{ currentTime: number; }>
+getCurrentTime(options: Assets) => Promise<{ currentTime: number; }>
 ```
 
 Get the current time of an audio file
 
-| Param         | Type                              |
-| ------------- | --------------------------------- |
-| **`options`** | <code>{ assetId: string; }</code> |
+| Param         | Type                                      |
+| ------------- | ----------------------------------------- |
+| **`options`** | <code><a href="#assets">Assets</a></code> |
 
 **Returns:** <code>Promise&lt;{ currentTime: number; }&gt;</code>
 
@@ -806,7 +836,7 @@ Get the current time of an audio file
 getDuration(options: Assets) => Promise<{ duration: number; }>
 ```
 
-Get the duration of an audio file
+Get the duration of an audio file in seconds
 
 | Param         | Type                                      |
 | ------------- | ----------------------------------------- |
@@ -894,6 +924,23 @@ Clear the audio cache for remote audio files
 --------------------
 
 
+### setDebugMode(...)
+
+```typescript
+setDebugMode(options: { enabled: boolean; }) => Promise<void>
+```
+
+Set debug mode logging
+
+| Param         | Type                               | Description                               |
+| ------------- | ---------------------------------- | ----------------------------------------- |
+| **`options`** | <code>{ enabled: boolean; }</code> | - Options to enable or disable debug mode |
+
+**Since:** 6.5.0
+
+--------------------
+
+
 ### getPluginVersion()
 
 ```typescript
@@ -929,7 +976,6 @@ Use this when you need to ensure compatibility with other audio plugins
 
 | Prop                     | Type                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Default            | Since |
 | ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----- |
-| **`fade`**               | <code>boolean</code> | Play the audio with Fade effect, only available for IOS                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |                    |       |
 | **`focus`**              | <code>boolean</code> | focus the audio with Audio Focus                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |                    |       |
 | **`background`**         | <code>boolean</code> | Play the audio in the background                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |                    |       |
 | **`ignoreSilent`**       | <code>boolean</code> | Ignore silent mode, works only on iOS setting this will nuke other audio apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                    |       |
@@ -988,11 +1034,78 @@ behavior details about audio mixing on iOS.
 | **`headers`**              | <code><a href="#record">Record</a>&lt;string, string&gt;</code>       | Custom HTTP headers to include when fetching remote audio files. Only used when isUrl is true and assetPath is a remote URL (http/https). Example: { 'x-api-key': 'abc123', 'Authorization': 'Bearer token' }                                                                                   |                    | 7.10.0 |
 
 
+#### AssetPlayOptions
+
+| Prop                   | Type                 | Description                                                                                                                                    |
+| ---------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`assetId`**          | <code>string</code>  | Asset Id, unique identifier of the file                                                                                                        |
+| **`time`**             | <code>number</code>  | Time to start playing the audio, in seconds                                                                                                    |
+| **`delay`**            | <code>number</code>  | Delay to start playing the audio, in seconds                                                                                                   |
+| **`volume`**           | <code>number</code>  | Volume of the audio, between 0.1 and 1.0                                                                                                       |
+| **`fadeIn`**           | <code>boolean</code> | Whether to fade in the audio                                                                                                                   |
+| **`fadeOut`**          | <code>boolean</code> | Whether to fade out the audio                                                                                                                  |
+| **`fadeInDuration`**   | <code>number</code>  | Fade in duration in seconds. Only used if fadeIn is true. Default is 1s.                                                                       |
+| **`fadeOutDuration`**  | <code>number</code>  | Fade out duration in seconds. Only used if fadeOut is true. Default is 1s.                                                                     |
+| **`fadeOutStartTime`** | <code>number</code>  | Time in seconds from the start of the audio to start fading out. Only used if fadeOut is true. Default is fadeOutDuration before end of audio. |
+
+
+#### AssetPauseOptions
+
+| Prop                  | Type                 | Description                                  |
+| --------------------- | -------------------- | -------------------------------------------- |
+| **`assetId`**         | <code>string</code>  | Asset Id, unique identifier of the file      |
+| **`fadeOut`**         | <code>boolean</code> | Whether to fade out the audio before pausing |
+| **`fadeOutDuration`** | <code>number</code>  | Fade out duration in seconds. Default is 1s. |
+
+
+#### AssetResumeOptions
+
+| Prop                 | Type                 | Description                                 |
+| -------------------- | -------------------- | ------------------------------------------- |
+| **`assetId`**        | <code>string</code>  | Asset Id, unique identifier of the file     |
+| **`fadeIn`**         | <code>boolean</code> | Whether to fade in the audio during resume  |
+| **`fadeInDuration`** | <code>number</code>  | Fade in duration in seconds. Default is 1s. |
+
+
 #### Assets
 
 | Prop          | Type                | Description                             |
 | ------------- | ------------------- | --------------------------------------- |
 | **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file |
+
+
+#### AssetStopOptions
+
+| Prop                  | Type                 | Description                                   |
+| --------------------- | -------------------- | --------------------------------------------- |
+| **`assetId`**         | <code>string</code>  | Asset Id, unique identifier of the file       |
+| **`fadeOut`**         | <code>boolean</code> | Whether to fade out the audio before stopping |
+| **`fadeOutDuration`** | <code>number</code>  | Fade out duration in seconds. Default is 1s.  |
+
+
+#### AssetVolume
+
+| Prop           | Type                | Description                                                                          |
+| -------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| **`assetId`**  | <code>string</code> | Asset Id, unique identifier of the file                                              |
+| **`volume`**   | <code>number</code> | Volume of the audio, between 0.1 and 1.0                                             |
+| **`duration`** | <code>number</code> | Time over which to fade to the target volume, in seconds. Default is 0s (immediate). |
+
+
+#### AssetRate
+
+| Prop          | Type                | Description                             |
+| ------------- | ------------------- | --------------------------------------- |
+| **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file |
+| **`rate`**    | <code>number</code> | Rate of the audio, between 0.1 and 1.0  |
+
+
+#### AssetSetTime
+
+| Prop          | Type                | Description                             |
+| ------------- | ------------------- | --------------------------------------- |
+| **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file |
+| **`time`**    | <code>number</code> | Time to set the audio, in seconds       |
 
 
 #### PluginListenerHandle
