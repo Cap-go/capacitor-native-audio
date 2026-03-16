@@ -1592,7 +1592,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
                         try {
                             if (asset != null) {
-                                double currentTime = asset.getCurrentTime();
+                                double currentTime = asset.getCurrentPosition();
                                 // Validate current time is valid before calculation
                                 if (currentTime >= 0) {
                                     double newTime = Math.max(0, currentTime - skipBackwardInterval);
@@ -1619,7 +1619,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
                         try {
                             if (asset != null) {
-                                double currentTime = asset.getCurrentTime();
+                                double currentTime = asset.getCurrentPosition();
                                 double duration = asset.getDuration();
                                 // Clamp new time to not exceed duration
                                 double newTime = Math.min(currentTime + skipForwardInterval, duration);
@@ -1823,7 +1823,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
             AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
             if (asset != null) {
-                position = (long) (asset.getCurrentTime() * 1000); // Convert seconds to milliseconds
+                position = (long) (asset.getCurrentPosition() * 1000); // Convert seconds to milliseconds
             }
         }
 
