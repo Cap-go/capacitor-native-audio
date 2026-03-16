@@ -66,6 +66,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @UnstableApi
 @CapacitorPlugin(
@@ -107,6 +109,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     // Background playback support
     private boolean backgroundPlayback = false;
+
+    // Background executor for preload operations to avoid ANR on main thread
+    private ExecutorService preloadExecutor = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "NativeAudio-Preload");
+        t.setDaemon(false); // Ensure preload completes even if app goes to background
+        return t;
+    });
 
     /**
      * Initializes plugin runtime state by obtaining the system {@link AudioManager}, preparing the asset map,
@@ -296,18 +305,25 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     /**
      * Initiates preloading of an audio asset described by the plugin call.
      *
+     * <p>The preload operation is executed on a dedicated background thread to avoid ANR (Application Not Responding)
+     * when MediaPlayer.prepare() is called during asset initialization. This ensures the main thread remains responsive.
+     *
      * @param call the PluginCall containing preload options (for example `assetId`, `assetPath`, `isUrl`, `isComplex`, headers, and optional notification metadata); the call will be resolved or rejected when the preload operation completes.
      */
     @PluginMethod
     public void preload(final PluginCall call) {
-        this.getActivity().runOnUiThread(
-            new Runnable() {
-                @Override
-                public void run() {
+        // Dispatch preload to background thread to avoid ANR during MediaPlayer.prepare()
+        preloadExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
                     preloadAsset(call);
+                } catch (Exception ex) {
+                    Log.e(TAG, "Unexpected error in preload background task", ex);
+                    call.reject("Preload failed: " + ex.getMessage());
                 }
             }
-        );
+        });
     }
 
     /**
@@ -989,7 +1005,16 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     }
 
     /**
-     * Emits a "currentTime" event for the given asset with the playback position rounded to the nearest 0.1 second.
+     * Dispatches a preload-ready event to JavaScript listeners.
+     * Called when an audio asset has been fully loaded and is ready for playback.
+     *
+     * @param assetId the ID of the preloaded asset
+     */
+    private void dispatchPreloadReady(String assetId) {
+        JSObject data = new JSObject();
+        data.put("assetId", assetId);
+        notifyListeners("preloadReady", data);
+    }
      *
      * The emitted event payload contains `assetId` and `currentTime` (in seconds, rounded to the nearest 0.1).
      *
@@ -1213,6 +1238,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             // Set completion listener and add to asset list
             asset.setCompletionListener(this::dispatchComplete);
             audioAssetList.put(audioId, asset);
+            
+            // Dispatch event to notify JS that preload is complete
+            dispatchPreloadReady(audioId);
+            
             call.resolve(status);
         } catch (Exception ex) {
             Log.e("AudioPlugin", "Error in preloadAsset", ex);

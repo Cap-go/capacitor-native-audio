@@ -1,6 +1,10 @@
 # node files
 dist
 node_modules
+bun.lock
+
+# generated scripts
+scripts/configure-dependencies.js
 
 # iOS files
 /Packages

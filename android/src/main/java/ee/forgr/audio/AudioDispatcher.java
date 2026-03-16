@@ -48,6 +48,10 @@ public class AudioDispatcher
         mediaPlayer.setVolume(volume, volume);
         currentVolume = volume;
         mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(1.0f));
+        
+        // Use synchronous prepare() since we're already on a background thread (from NativeAudio.preloadExecutor).
+        // This ensures the MediaPlayer is fully ready before the constructor returns.
+        // CRITICAL: If called on main thread, this could cause ANR; always call from background executor.
         mediaPlayer.prepare();
     }
 
