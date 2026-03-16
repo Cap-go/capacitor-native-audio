@@ -255,10 +255,20 @@ public class AudioAsset implements AutoCloseable {
         }
     }
 
+    /**
+     * Registers a listener to be notified when the audio asset is prepared and ready for playback.
+     * For local assets, this fires immediately. For remote/streaming assets, it fires when the player reaches STATE_READY.
+     *
+     * @param listener a Runnable that will be executed when the asset is prepared
+     */
     public void setOnPreparedListener(Runnable listener) {
         this.onPreparedListener = listener;
     }
 
+    /**
+     * Notifies the registered listener that the audio asset is now prepared.
+     * Called internally when preparation is complete.
+     */
     protected void notifyPrepared() {
         if (onPreparedListener != null) {
             onPreparedListener.run();
