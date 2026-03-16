@@ -44,6 +44,7 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.media.session.MediaButtonReceiver;
 import androidx.media3.common.util.UnstableApi;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
