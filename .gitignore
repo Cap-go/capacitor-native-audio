@@ -72,3 +72,6 @@ package-lock.json
 
 # Development artifacts
 .swiftpm/
+
+# Generated scripts
+scripts/configure-dependencies.js
