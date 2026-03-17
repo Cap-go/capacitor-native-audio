@@ -118,7 +118,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
      */
     private ExecutorService getPreloadExecutor() {
         if (preloadExecutor == null) {
-            preloadExecutor = Executors.newSingleThreadExecutor(r -> {
+            preloadExecutor = Executors.newSingleThreadExecutor((r) -> {
                 Thread t = new Thread(r, "NativeAudio-Preload");
                 t.setDaemon(false); // Ensure preload completes even if app goes to background
                 return t;
@@ -323,17 +323,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     @PluginMethod
     public void preload(final PluginCall call) {
         // Dispatch preload to background thread to avoid ANR during MediaPlayer.prepare()
-        getPreloadExecutor().execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    preloadAsset(call);
-                } catch (Exception ex) {
-                    Log.e(TAG, "Unexpected error in preload background task", ex);
-                    call.reject("Preload failed: " + ex.getMessage());
+        getPreloadExecutor().execute(
+            new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        preloadAsset(call);
+                    } catch (Exception ex) {
+                        Log.e(TAG, "Unexpected error in preload background task", ex);
+                        call.reject("Preload failed: " + ex.getMessage());
+                    }
                 }
             }
-        });
+        );
     }
 
     /**
@@ -1248,13 +1250,13 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
             // Set completion listener and add to asset list
             asset.setCompletionListener(this::dispatchComplete);
-            
+
             // Register listener to dispatch preloadReady event when asset is actually prepared
             // For local assets, this fires immediately. For remote/streaming assets, it fires when STATE_READY is reached.
             asset.setOnPreparedListener(() -> this.dispatchPreloadReady(audioId));
-            
+
             audioAssetList.put(audioId, asset);
-            
+
             call.resolve(status);
         } catch (Exception ex) {
             Log.e("AudioPlugin", "Error in preloadAsset", ex);

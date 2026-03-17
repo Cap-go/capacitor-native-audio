@@ -50,7 +50,7 @@ public class AudioDispatcher
             mediaPlayer.setVolume(volume, volume);
             currentVolume = volume;
             mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(1.0f));
-            
+
             // Detect if we're on the main thread to avoid ANR
             if (Looper.getMainLooper() == Looper.myLooper()) {
                 // Running on UI thread (e.g., from playOnce()) - use async prepare
