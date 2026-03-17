@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 
 // swiftlint:disable:next type_body_length
 public class AudioAsset: NSObject, AVAudioPlayerDelegate {
@@ -113,10 +113,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     func getCurrentTime() -> TimeInterval {
         var result: TimeInterval = 0
-        owner?.executeOnAudioQueue { [weak self] in
-            guard let self else { return }
-            guard !channels.isEmpty, playIndex < channels.count else { return }
-            result = channels[playIndex].currentTime
+        owner?.readOnAudioQueue {
+            guard !self.channels.isEmpty, self.playIndex < self.channels.count else { return }
+            result = self.channels[self.playIndex].currentTime
         }
         return result
     }
@@ -313,11 +312,14 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     func isPlaying() -> Bool {
         var result = false
-        owner?.executeOnAudioQueue { [weak self] in
-            guard let self else { return }
-            result = channels.contains(where: { $0.isPlaying })
+        owner?.readOnAudioQueue {
+            result = self.channels.contains(where: { $0.isPlaying })
         }
         return result
+    }
+
+    internal func shouldStopCurrentTimeUpdatesWhenNotPlaying() -> Bool {
+        true
     }
 
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
@@ -347,7 +349,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                 }
                 if self.isPlaying() {
                     owner.notifyCurrentTime(self)
-                } else {
+                } else if self.shouldStopCurrentTimeUpdatesWhenNotPlaying() {
                     self.stopCurrentTimeUpdates()
                 }
             }

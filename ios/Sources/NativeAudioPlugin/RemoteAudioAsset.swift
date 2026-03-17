@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 
 // swiftlint:disable:next type_body_length
 public class RemoteAudioAsset: AudioAsset {
@@ -34,7 +34,6 @@ public class RemoteAudioAsset: AudioAsset {
                 let playerItem = AVPlayerItem(asset: asset)
                 let player = AVPlayer(playerItem: playerItem)
                 player.volume = self.initialVolume
-                player.rate = 1.0
                 self.playerItems.append(playerItem)
                 self.players.append(player)
 
@@ -264,6 +263,21 @@ public class RemoteAudioAsset: AudioAsset {
             result = players[playIndex].timeControlStatus == .playing
         }
         return result
+    }
+
+    override func shouldStopCurrentTimeUpdatesWhenNotPlaying() -> Bool {
+        var shouldStop = true
+        owner?.executeOnAudioQueue { [weak self] in
+            guard let self else { return }
+            guard !players.isEmpty && playIndex < players.count else {
+                shouldStop = true
+                return
+            }
+
+            let status = players[playIndex].timeControlStatus
+            shouldStop = status != .waitingToPlayAtSpecifiedRate
+        }
+        return shouldStop
     }
 
     override func getCurrentTime() -> TimeInterval {
