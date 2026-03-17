@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 
 // swiftlint:disable:next type_body_length
 public class RemoteAudioAsset: AudioAsset {

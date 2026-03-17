@@ -1,8 +1,8 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Capacitor
 import CoreAudio
 import Foundation
-import MediaPlayer
+@preconcurrency import MediaPlayer
 
 enum MyError: Error {
     case runtimeError(String)
