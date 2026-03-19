@@ -1543,6 +1543,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     }
                 } catch (InterruptedException e) {
                     Log.w(TAG, "Interrupted waiting for preload executor shutdown", e);
+                    Thread.currentThread().interrupt();
                 }
                 preloadExecutor = null;
             }
