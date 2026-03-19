@@ -68,6 +68,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 @UnstableApi
 @CapacitorPlugin(
@@ -112,19 +113,22 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     // Background executor for preload operations to avoid ANR on main thread
     private ExecutorService preloadExecutor;
+    private final Object preloadExecutorLock = new Object();
 
     /**
      * Get or create the preload executor thread. Uses lazy initialization and recreates if needed after deinit.
      */
     private ExecutorService getPreloadExecutor() {
-        if (preloadExecutor == null) {
-            preloadExecutor = Executors.newSingleThreadExecutor((r) -> {
-                Thread t = new Thread(r, "NativeAudio-Preload");
-                t.setDaemon(false); // Ensure preload completes even if app goes to background
-                return t;
-            });
+        synchronized (preloadExecutorLock) {
+            if (preloadExecutor == null || preloadExecutor.isShutdown() || preloadExecutor.isTerminated()) {
+                preloadExecutor = Executors.newSingleThreadExecutor((r) -> {
+                    Thread t = new Thread(r, "NativeAudio-Preload");
+                    t.setDaemon(false); // Ensure preload completes even if app goes to background
+                    return t;
+                });
+            }
+            return preloadExecutor;
         }
-        return preloadExecutor;
     }
 
     /**
@@ -322,20 +326,31 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
      */
     @PluginMethod
     public void preload(final PluginCall call) {
-        // Dispatch preload to background thread to avoid ANR during MediaPlayer.prepare()
-        getPreloadExecutor().execute(
-            new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        preloadAsset(call);
-                    } catch (Exception ex) {
-                        Log.e(TAG, "Unexpected error in preload background task", ex);
-                        call.reject("Preload failed: " + ex.getMessage());
-                    }
+        Runnable task = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    preloadAsset(call);
+                } catch (Exception ex) {
+                    Log.e(TAG, "Unexpected error in preload background task", ex);
+                    call.reject("Preload failed: " + ex.getMessage());
                 }
             }
-        );
+        };
+
+        try {
+            getPreloadExecutor().execute(task);
+        } catch (RejectedExecutionException ex) {
+            Log.w(TAG, "Preload executor rejected task, recreating executor", ex);
+            synchronized (preloadExecutorLock) {
+                preloadExecutor = null;
+            }
+            try {
+                getPreloadExecutor().execute(task);
+            } catch (RejectedExecutionException retryEx) {
+                call.reject("Preload executor unavailable");
+            }
+        }
     }
 
     /**
