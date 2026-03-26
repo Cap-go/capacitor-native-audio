@@ -30,21 +30,22 @@ extension RemoteAudioAsset {
     func fadeOut(player: AVPlayer, fadeOutDuration: TimeInterval, toPause: Bool = false) {
         cancelFade()
         let steps = Int(fadeOutDuration / TimeInterval(fadeDelaySecs))
-        guard steps > 0 else { return }
-        let fadeStep = player.volume / Float(steps)
+        let fadeStep = steps > 0 ? player.volume / Float(steps) : 0
         var currentVolume = player.volume
 
         var task: DispatchWorkItem?
         task = DispatchWorkItem { [weak self] in
             guard let self else { return }
             for _ in 0..<steps {
-                guard let task, !task.isCancelled, self.isPlaying(), player.timeControlStatus == .playing else { return }
+                guard let task, !task.isCancelled else { return }
+                guard self.isPlaying(), player.timeControlStatus == .playing else { break }
                 currentVolume -= fadeStep
                 DispatchQueue.main.async {
                     player.volume = max(currentVolume, 0)
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(self.fadeDelaySecs))
             }
+            guard let task, !task.isCancelled else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 if toPause {
