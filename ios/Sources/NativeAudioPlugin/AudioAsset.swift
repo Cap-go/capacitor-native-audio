@@ -120,13 +120,24 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         return result
     }
 
-    func setCurrentTime(time: TimeInterval) {
-        owner?.executeOnAudioQueue { [weak self] in
-            guard let self else { return }
-            guard !channels.isEmpty, playIndex < channels.count else { return }
+    func setCurrentTime(time: TimeInterval, completion: (() -> Void)? = nil) {
+        guard let owner else {
+            completion?()
+            return
+        }
+        owner.executeOnAudioQueue { [weak self] in
+            guard let self else {
+                completion?()
+                return
+            }
+            guard !channels.isEmpty, playIndex < channels.count else {
+                completion?()
+                return
+            }
             let player = channels[playIndex]
             let validTime = min(max(time, 0), player.duration)
             player.currentTime = validTime
+            completion?()
         }
     }
 
@@ -213,8 +224,7 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
             guard let self else { return }
             guard !channels.isEmpty, playIndex < channels.count else { return }
             let player = channels[playIndex]
-            let timeOffset = player.deviceCurrentTime + 0.01
-            player.play(atTime: timeOffset)
+            player.play()
             startCurrentTimeUpdates()
         }
     }
@@ -248,8 +258,25 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                 return
             }
             let player = channels[playIndex]
-            if player.isPlaying && player.volume > 0 {
-                fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: toPause)
+            if player.isPlaying {
+                if toPause {
+                    if player.volume > 0 {
+                        fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: true) { [weak self] elapsed, duration in
+                            guard let self, let owner = self.owner else { return }
+                            owner.recordPausePositionAfterFade(assetId: self.assetId, elapsedTime: elapsed, duration: duration)
+                        }
+                    } else {
+                        cancelFade()
+                        schedulePauseWithPositionRecording(audio: player) { [weak self] elapsed, duration in
+                            guard let self, let owner = self.owner else { return }
+                            owner.recordPausePositionAfterFade(assetId: self.assetId, elapsedTime: elapsed, duration: duration)
+                        }
+                    }
+                } else if player.volume > 0 {
+                    fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: false)
+                } else {
+                    stop()
+                }
             } else if !toPause {
                 stop()
             }

@@ -132,6 +132,49 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
+    /// Timescale for seek targets; 600 is a common media default and avoids coarse rounding from timescale 1.
+    private static let seekPreferredTimescale: CMTimeScale = 600
+
+    override func setCurrentTime(time: TimeInterval, completion: (() -> Void)? = nil) {
+        guard let owner else {
+            completion?()
+            return
+        }
+        owner.executeOnAudioQueue { [weak self] in
+            guard let self else {
+                completion?()
+                return
+            }
+            guard !players.isEmpty && playIndex < players.count else {
+                completion?()
+                return
+            }
+            let player = players[playIndex]
+            let lowerBound = max(time, 0)
+            let validTime: TimeInterval
+            if let item = player.currentItem {
+                let d = item.duration
+                if d == .indefinite || !d.isValid {
+                    validTime = lowerBound
+                } else {
+                    let durationSeconds = d.seconds
+                    if durationSeconds.isFinite && durationSeconds > 0 {
+                        validTime = min(lowerBound, durationSeconds)
+                    } else {
+                        validTime = lowerBound
+                    }
+                }
+            } else {
+                validTime = lowerBound
+            }
+            let target = CMTime(seconds: validTime, preferredTimescale: Self.seekPreferredTimescale)
+            player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+                guard finished else { return }
+                completion?()
+            }
+        }
+    }
+
     override func resume() {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self else { return }
@@ -338,7 +381,14 @@ public class RemoteAudioAsset: AudioAsset {
             }
             let player = players[playIndex]
             if player.timeControlStatus == .playing {
-                fadeOut(player: player, fadeOutDuration: fadeOutDuration, toPause: toPause)
+                if toPause {
+                    fadeOut(player: player, fadeOutDuration: fadeOutDuration, toPause: true) { [weak self] elapsed, duration in
+                        guard let self, let owner = self.owner else { return }
+                        owner.recordPausePositionAfterFade(assetId: self.assetId, elapsedTime: elapsed, duration: duration)
+                    }
+                } else {
+                    fadeOut(player: player, fadeOutDuration: fadeOutDuration, toPause: false)
+                }
             } else if !toPause {
                 stop()
             }
