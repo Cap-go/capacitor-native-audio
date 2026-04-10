@@ -80,7 +80,7 @@ extension AudioAsset {
         beforePause: ((TimeInterval, TimeInterval) -> Void)? = nil
     ) {
         cancelFade()
-        let steps = Int(fadeOutDuration / TimeInterval(fadeDelaySecs))
+        let steps = max(0, Int(fadeOutDuration / TimeInterval(fadeDelaySecs)))
         guard steps > 0 else {
             if toPause {
                 scheduleLocalFadeOutPauseOnMain(audio: audio, beforePause: beforePause)

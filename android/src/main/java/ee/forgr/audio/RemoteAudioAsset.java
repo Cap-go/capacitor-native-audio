@@ -686,6 +686,8 @@ public class RemoteAudioAsset extends AudioAsset {
                                         player.setVolume(0);
                                         player.stop();
                                         dispatchComplete();
+                                        initializePlayer(player);
+                                        isPrepared = false;
                                         logger.verbose("Faded out to stop at time " + getCurrentPosition());
                                     }
                                 }

@@ -62,7 +62,7 @@ extension RemoteAudioAsset {
         beforePause: ((TimeInterval, TimeInterval) -> Void)? = nil
     ) {
         cancelFade()
-        let steps = Int(fadeOutDuration / TimeInterval(fadeDelaySecs))
+        let steps = max(0, Int(fadeOutDuration / TimeInterval(fadeDelaySecs)))
         guard steps > 0 else {
             if toPause {
                 scheduleRemoteFadeOutPauseOnMain(player: player, beforePause: beforePause)

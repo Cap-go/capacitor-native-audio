@@ -69,7 +69,7 @@ dependencies {
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
-    implementation 'androidx.media3:media3-exoplayer:1.9.2'
+    implementation 'androidx.media3:media3-exoplayer:1.10.0'
 
     // HLS (m3u8) streaming support - optional dependency
     // When disabled, reduces APK size by ~4MB
@@ -81,7 +81,7 @@ dependencies {
     implementation 'androidx.media3:media3-session:1.9.2'
     implementation 'androidx.media3:media3-transformer:1.9.2'
     implementation 'androidx.media3:media3-ui:1.9.2'
-    implementation 'androidx.media3:media3-database:1.9.3'
+    implementation 'androidx.media3:media3-database:1.10.0'
     implementation 'androidx.media3:media3-common:1.10.0'
     // Media notification support
     implementation 'androidx.media:media:1.7.1'
