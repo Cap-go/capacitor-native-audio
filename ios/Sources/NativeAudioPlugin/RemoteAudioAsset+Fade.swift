@@ -62,7 +62,7 @@ extension RemoteAudioAsset {
         beforePause: ((TimeInterval, TimeInterval) -> Void)? = nil
     ) {
         cancelFade()
-        let steps = Int(fadeOutDuration / TimeInterval(fadeDelaySecs))
+        let steps = max(0, Int(fadeOutDuration / TimeInterval(fadeDelaySecs)))
         guard steps > 0 else {
             if toPause {
                 scheduleRemoteFadeOutPauseOnMain(player: player, beforePause: beforePause)
@@ -81,13 +81,15 @@ extension RemoteAudioAsset {
         task = DispatchWorkItem { [weak self] in
             guard let self else { return }
             for _ in 0..<steps {
-                guard let task, !task.isCancelled, self.isPlaying(), player.timeControlStatus == .playing else { return }
+                guard let task, !task.isCancelled else { return }
+                guard self.isPlaying(), player.timeControlStatus == .playing else { break }
                 currentVolume -= fadeStep
                 DispatchQueue.main.async {
                     player.volume = max(currentVolume, 0)
                 }
                 Thread.sleep(forTimeInterval: TimeInterval(self.fadeDelaySecs))
             }
+            guard let task, !task.isCancelled else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 if toPause {

@@ -612,8 +612,16 @@ public class RemoteAudioAsset extends AudioAsset {
         );
     }
 
+    @Override
+    public void stopWithFade(double fadeOutDurationMs, boolean toPause) throws Exception {
+        stopWithFade((float) fadeOutDurationMs, toPause);
+    }
+
     public void stopWithFade(float fadeOutDurationMs, boolean asPause) throws Exception {
         if (players.isEmpty()) {
+            if (!asPause) {
+                stop();
+            }
             return;
         }
 
@@ -623,6 +631,12 @@ public class RemoteAudioAsset extends AudioAsset {
             .runOnUiThread(() -> {
                 if (player != null && player.isPlaying()) {
                     fadeOut(player, fadeOutDurationMs, asPause);
+                } else if (!asPause) {
+                    try {
+                        stop();
+                    } catch (Exception e) {
+                        logger.error("Error stopping remote audio after failed fade", e);
+                    }
                 }
             });
     }
@@ -661,13 +675,19 @@ public class RemoteAudioAsset extends AudioAsset {
                         owner
                             .getActivity()
                             .runOnUiThread(() -> {
-                                if (player != null && player.isPlaying()) {
+                                // Stop/pause unconditionally: the fade brought volume to zero so the
+                                // player must be stopped regardless of its current isPlaying() state
+                                // (e.g. ExoPlayer may have auto-stopped at volume 0 on some devices).
+                                if (player != null) {
                                     if (asPause) {
                                         player.pause();
                                         logger.verbose("Faded out to pause at time " + getCurrentPosition());
                                     } else {
                                         player.setVolume(0);
                                         player.stop();
+                                        dispatchComplete();
+                                        initializePlayer(player);
+                                        isPrepared = false;
                                         logger.verbose("Faded out to stop at time " + getCurrentPosition());
                                     }
                                 }
@@ -685,7 +705,7 @@ public class RemoteAudioAsset extends AudioAsset {
                     owner
                         .getActivity()
                         .runOnUiThread(() -> {
-                            if (player != null && player.isPlaying()) {
+                            if (player != null) {
                                 player.setVolume(thisTargetVolume);
                             }
                         });

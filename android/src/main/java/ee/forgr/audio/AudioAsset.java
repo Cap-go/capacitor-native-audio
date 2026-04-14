@@ -425,6 +425,8 @@ public class AudioAsset implements AutoCloseable {
         if (audio != null && audio.isPlaying()) {
             cancelFade();
             fadeOut(audio, fadeOutDurationMs, toPause);
+        } else if (!toPause) {
+            stop();
         }
     }
 
