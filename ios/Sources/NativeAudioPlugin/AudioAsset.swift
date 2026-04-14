@@ -261,10 +261,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
             if player.isPlaying {
                 if toPause {
                     if player.volume > 0 {
-                        fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: true) { [weak self] elapsed, duration in
+                        fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: true, beforePause: { [weak self] elapsed, duration in
                             guard let self, let owner = self.owner else { return }
                             owner.recordPausePositionAfterFade(assetId: self.assetId, elapsedTime: elapsed, duration: duration)
-                        }
+                        })
                     } else {
                         cancelFade()
                         schedulePauseWithPositionRecording(audio: player) { [weak self] elapsed, duration in
@@ -273,9 +273,15 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
                         }
                     }
                 } else if player.volume > 0 {
-                    fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: false)
+                    fadeOut(audio: player, fadeOutDuration: fadeOutDuration, toPause: false, beforeStop: { [weak self] elapsed, duration in
+                        guard let self, let owner = self.owner else { return }
+                        owner.recordStoppedPlaybackStateAfterFade(assetId: self.assetId, elapsedTime: elapsed, duration: duration)
+                    })
                 } else {
+                    let elapsed = player.currentTime
+                    let duration = player.duration.isFinite ? player.duration : 0
                     stop()
+                    owner?.recordStoppedPlaybackStateAfterFade(assetId: assetId, elapsedTime: elapsed, duration: duration)
                 }
             } else if !toPause {
                 stop()

@@ -266,8 +266,20 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     return
                 }
 
+                // Sample before `stop()` — `AudioAsset.stop()` resets every channel's `currentTime` to 0.
+                let elapsedTime = asset.getCurrentTime()
+                let duration = asset.getDuration()
                 asset.stop()
-                self.currentlyPlayingAssetId = nil
+                // Keep `currentlyPlayingAssetId` and Now Playing metadata so the lock screen card
+                // stays until `unload()` (or natural completion / another `play()` replaces it).
+                if self.showNotification,
+                   self.currentlyPlayingAssetId == assetId {
+                    self.updatePlaybackState(
+                        isPlaying: false,
+                        elapsedTime: elapsedTime,
+                        duration: duration
+                    )
+                }
             }
             return .success
         }
@@ -974,7 +986,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
     /// Stops playback of the audio asset identified by `assetId` from the plugin call and performs related cleanup.
     ///
-    /// The `assetId` is read from the call using `Constant.AssetIdKey`. If the asset is currently playing it will be stopped; if `showNotification` is enabled the Now Playing info is cleared and `currentlyPlayingAssetId` is reset. If the asset was created by `playOnce`, it is removed from `playOnceAssets` and its notification metadata is removed. The audio session is ended if appropriate. The call is resolved on success or rejected with an error message on failure.
+    /// The `assetId` is read from the call using `Constant.AssetIdKey`. If the asset is currently playing it will be stopped. When `showNotification` is enabled and this asset owns Now Playing, playback state is updated to stopped but the Now Playing card is left in place until `unload()` or natural completion. If the asset was created by `playOnce`, it is removed from `playOnceAssets` and its notification metadata is removed. The audio session is ended if appropriate. The call is resolved on success or rejected with an error message on failure.
     @objc func stop(_ call: CAPPluginCall) {
         let audioId = call.getString(Constant.AssetIdKey) ?? ""
         let fadeOut = call.getBool(Constant.FadeOut) ?? false
@@ -989,11 +1001,32 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
 
             do {
+                // Sample before `stopAudio` — non-fade `AudioAsset.stop()` resets `currentTime` to 0.
+                var preStopNowPlayingElapsed: TimeInterval?
+                var preStopNowPlayingDuration: TimeInterval?
+                if !fadeOut,
+                   self.showNotification,
+                   self.currentlyPlayingAssetId == audioId,
+                   let preStopAsset = self.audioList[audioId] as? AudioAsset {
+                    preStopNowPlayingElapsed = preStopAsset.getCurrentTime()
+                    preStopNowPlayingDuration = preStopAsset.getDuration()
+                }
+
                 try self.stopAudio(audioId: audioId, fadeOut: fadeOut, fadeOutDuration: fadeOutDuration)
 
-                // Reset current track when stopping the asset that was playing (internal state, not just for notifications)
-                if self.currentlyPlayingAssetId == audioId {
-                    self.currentlyPlayingAssetId = nil
+                // Keep `currentlyPlayingAssetId` so lock screen / Control Center stays tied to this asset
+                // until `unload()` clears it; refresh Now Playing to a stopped state (rate 0).
+                // Skip when fading out to stop: `recordStoppedPlaybackStateAfterFade` runs when the fade finishes
+                // (and for zero-volume immediate stop inside `stopWithFade`).
+                if let elapsed = preStopNowPlayingElapsed,
+                   let duration = preStopNowPlayingDuration,
+                   self.showNotification,
+                   self.currentlyPlayingAssetId == audioId {
+                    self.updatePlaybackState(
+                        isPlaying: false,
+                        elapsedTime: elapsed,
+                        duration: duration
+                    )
                 }
 
                 // Clean up playOnce tracking if this was a playOnce asset
@@ -1511,6 +1544,16 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             var data = self.audioAssetData[assetId] ?? [:]
             data["timeBeforePause"] = elapsedTime
             self.audioAssetData[assetId] = data
+            if self.showNotification && self.currentlyPlayingAssetId == assetId {
+                self.updatePlaybackState(isPlaying: false, elapsedTime: elapsedTime, duration: duration)
+            }
+        }
+    }
+
+    /// Refreshes Now Playing to a stopped state after fade-out-to-stop completes (or zero-volume stop-with-fade).
+    internal func recordStoppedPlaybackStateAfterFade(assetId: String, elapsedTime: TimeInterval, duration: TimeInterval) {
+        audioQueue.async { [weak self] in
+            guard let self else { return }
             if self.showNotification && self.currentlyPlayingAssetId == assetId {
                 self.updatePlaybackState(isPlaying: false, elapsedTime: elapsedTime, duration: duration)
             }
