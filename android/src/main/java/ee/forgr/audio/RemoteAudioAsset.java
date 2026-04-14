@@ -444,23 +444,12 @@ public class RemoteAudioAsset extends AudioAsset {
     @Override
     public double getCurrentPosition() {
         if (!players.isEmpty() && isPrepared) {
-            final double[] position = { 0 };
-            owner
-                .getActivity()
-                .runOnUiThread(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            ExoPlayer player = players.get(playIndex);
-                            if (player.getPlaybackState() == Player.STATE_READY) {
-                                long rawPosition = player.getCurrentPosition();
-                                logger.debug("Raw position: " + rawPosition);
-                                position[0] = rawPosition / 1000.0;
-                            }
-                        }
-                    }
-                );
-            return position[0];
+            ExoPlayer player = players.get(playIndex);
+            if (player != null) {
+                long rawPosition = player.getCurrentPosition();
+                logger.debug("Raw position: " + rawPosition);
+                return rawPosition / 1000.0;
+            }
         }
         return 0;
     }

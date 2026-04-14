@@ -1555,17 +1555,20 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 public void onRewind() {
                     if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
-                        try {
-                            if (asset != null) {
-                                // Skip backward 15 seconds
-                                double currentPosition = asset.getCurrentPosition();
-                                double newPosition = Math.max(0, currentPosition - 15.0);
-                                asset.setCurrentPosition(newPosition);
-                                Log.d(TAG, "Rewind 15s: " + currentPosition + " -> " + newPosition);
+                        getActivity().runOnUiThread(() -> {
+                            try {
+                                if (asset != null) {
+                                    double currentPosition = asset.getCurrentPosition();
+                                    double newPosition = Math.max(0, currentPosition - 15.0);
+                                    asset.setCurrentTime(newPosition);
+                                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                                    updateNotification(currentlyPlayingAssetId);
+                                    Log.d(TAG, "Rewind 15s: " + currentPosition + " -> " + newPosition);
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error rewinding audio from media session", e);
                             }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error rewinding audio from media session", e);
-                        }
+                        });
                     }
                 }
 
@@ -1573,18 +1576,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 public void onFastForward() {
                     if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
-                        try {
-                            if (asset != null) {
-                                // Skip forward 15 seconds
-                                double currentPosition = asset.getCurrentPosition();
-                                double duration = asset.getDuration();
-                                double newPosition = Math.min(duration, currentPosition + 15.0);
-                                asset.setCurrentPosition(newPosition);
-                                Log.d(TAG, "Fast forward 15s: " + currentPosition + " -> " + newPosition);
+                        getActivity().runOnUiThread(() -> {
+                            try {
+                                if (asset != null) {
+                                    double currentPosition = asset.getCurrentPosition();
+                                    double duration = asset.getDuration();
+                                    double newPosition = duration > 0 ? Math.min(duration, currentPosition + 15.0) : currentPosition + 15.0;
+                                    asset.setCurrentTime(newPosition);
+                                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                                    updateNotification(currentlyPlayingAssetId);
+                                    Log.d(TAG, "Fast forward 15s: " + currentPosition + " -> " + newPosition);
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error fast forwarding audio from media session", e);
                             }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error fast forwarding audio from media session", e);
-                        }
+                        });
                     }
                 }
 
@@ -1592,16 +1598,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 public void onSeekTo(long pos) {
                     if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
                         AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
-                        try {
-                            if (asset != null) {
-                                // Convert milliseconds to seconds
-                                double positionInSeconds = pos / 1000.0;
-                                asset.setCurrentPosition(positionInSeconds);
-                                Log.d(TAG, "Seek to: " + positionInSeconds);
+                        getActivity().runOnUiThread(() -> {
+                            try {
+                                if (asset != null) {
+                                    double positionInSeconds = pos / 1000.0;
+                                    asset.setCurrentTime(positionInSeconds);
+                                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
+                                    updateNotification(currentlyPlayingAssetId);
+                                    Log.d(TAG, "Seek to: " + positionInSeconds);
+                                }
+                            } catch (Exception e) {
+                                Log.e(TAG, "Error seeking audio from media session", e);
                             }
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error seeking audio from media session", e);
-                        }
+                        });
                     }
                 }
             }
@@ -1729,8 +1738,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private void updatePlaybackState(int state) {
         if (mediaSession == null) return;
 
+        long positionMs = 0;
+        if (currentlyPlayingAssetId != null && audioAssetList.containsKey(currentlyPlayingAssetId)) {
+            AudioAsset asset = audioAssetList.get(currentlyPlayingAssetId);
+            if (asset != null) {
+                try {
+                    double positionSeconds = asset.getCurrentPosition();
+                    positionMs = (long) (positionSeconds * 1000);
+                } catch (Exception e) {
+                    Log.e(TAG, "Error getting current position for playback state", e);
+                }
+            }
+        }
+
         PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
-            .setState(state, 0, state == PlaybackStateCompat.STATE_PLAYING ? 1.0f : 0.0f)
+            .setState(state, positionMs, state == PlaybackStateCompat.STATE_PLAYING ? 1.0f : 0.0f)
             .setActions(
                 PlaybackStateCompat.ACTION_PLAY |
                     PlaybackStateCompat.ACTION_PAUSE |
