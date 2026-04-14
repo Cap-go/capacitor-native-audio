@@ -310,8 +310,92 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             return .success
         }
+
+        // Skip forward command
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            guard let skipEvent = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            return self.handleSeekCommand(delta: skipEvent.interval)
+        }
+
+        // Skip backward command
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            guard let skipEvent = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+            return self.handleSeekCommand(delta: -skipEvent.interval)
+        }
+
+        // Scrub / change position command
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self else { return .commandFailed }
+            guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            return self.handleSeekCommand(targetTime: positionEvent.positionTime)
+        }
     }
     // swiftlint:enable function_body_length
+
+    private func handleSeekCommand(delta: TimeInterval? = nil, targetTime: TimeInterval? = nil) -> MPRemoteCommandHandlerStatus {
+        guard let assetId = currentlyPlayingAssetId else {
+            return .noSuchContent
+        }
+
+        var asset: AudioAsset?
+        audioQueue.sync {
+            asset = audioList[assetId] as? AudioAsset
+        }
+
+        guard let audioAsset = asset else {
+            return .noSuchContent
+        }
+
+        let duration = audioAsset.getDuration()
+        let currentTime = audioAsset.getCurrentTime()
+        let requestedTime: TimeInterval
+
+        if let delta {
+            requestedTime = currentTime + delta
+        } else if let targetTime {
+            requestedTime = targetTime
+        } else {
+            return .commandFailed
+        }
+
+        let clampedTime: TimeInterval
+        if duration.isFinite && duration > 0 {
+            clampedTime = min(max(requestedTime, 0), duration)
+        } else {
+            clampedTime = max(requestedTime, 0)
+        }
+
+        audioAsset.setCurrentTime(time: clampedTime) { [weak self, weak audioAsset] in
+            guard let self else { return }
+            let isPlaying = audioAsset?.isPlaying() ?? false
+            let durationValue = duration.isFinite && duration > 0 ? duration : nil
+
+            if self.showNotification,
+               self.currentlyPlayingAssetId == assetId {
+                self.updatePlaybackState(
+                    isPlaying: isPlaying,
+                    elapsedTime: clampedTime,
+                    duration: durationValue
+                )
+            }
+
+            // Emit a currentTime event so JS can sync UI immediately after remote seek.
+            let roundedTime = round(clampedTime * 10) / 10
+            self.notifyListeners("currentTime", data: [
+                "currentTime": roundedTime,
+                "assetId": assetId
+            ])
+        }
+
+        return .success
+    }
 
     @objc func setDebugMode(_ call: CAPPluginCall) {
         let debug = call.getBool("enabled") ?? false
