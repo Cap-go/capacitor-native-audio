@@ -69,6 +69,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
     internal var notificationMetadataMap: [String: [String: String]] = [:]
     private var currentlyPlayingAssetId: String?
+    private let skipIntervalSeconds: TimeInterval = 15
 
     /// Stores the asset IDs for playOnce operations to enable automatic cleanup after playback.
     ///
@@ -309,6 +310,40 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 }
             }
             return .success
+        }
+
+        // Skip forward command (default 15 seconds)
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipIntervalSeconds)]
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self = self, let assetId = self.currentlyPlayingAssetId else {
+                return .noSuchContent
+            }
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? self.skipIntervalSeconds
+            return self.handleRemoteSeek(assetId: assetId, targetTime: nil, delta: interval)
+        }
+
+        // Skip backward command (default 15 seconds)
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipIntervalSeconds)]
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self = self, let assetId = self.currentlyPlayingAssetId else {
+                return .noSuchContent
+            }
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? self.skipIntervalSeconds
+            return self.handleRemoteSeek(assetId: assetId, targetTime: nil, delta: -interval)
+        }
+
+        // Timeline scrubbing / seek to position
+        if #available(iOS 9.1, *) {
+            commandCenter.changePlaybackPositionCommand.isEnabled = true
+            commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+                guard let self = self,
+                      let assetId = self.currentlyPlayingAssetId,
+                      let seekEvent = event as? MPChangePlaybackPositionCommandEvent
+                else {
+                    return .noSuchContent
+                }
+                return self.handleRemoteSeek(assetId: assetId, targetTime: seekEvent.positionTime, delta: nil)
+            }
         }
     }
     // swiftlint:enable function_body_length
@@ -851,7 +886,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             cancelPendingPlay(for: audioAsset.assetId)
             clearAudioAssetData(for: audioAsset.assetId)
             let time = max(call.getDouble(Constant.Time) ?? 0, 0)
-            audioAsset.setCurrentTime(time: time) {
+            audioAsset.setCurrentTime(time: time) { [weak self] in
+                if let self = self {
+                    self.refreshNowPlayingPosition(for: audioAsset.assetId, asset: audioAsset, elapsedTime: time)
+                }
                 call.resolve()
             }
         }
@@ -1572,6 +1610,44 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         }
+    }
+
+    private func refreshNowPlayingPosition(for assetId: String, asset: AudioAsset, elapsedTime: TimeInterval? = nil, duration: TimeInterval? = nil) {
+        guard showNotification, currentlyPlayingAssetId == assetId else { return }
+        let resolvedElapsed = elapsedTime ?? asset.getCurrentTime()
+        let resolvedDuration = duration ?? asset.getDuration()
+        let isPlaying = asset.isPlaying()
+        updatePlaybackState(isPlaying: isPlaying, elapsedTime: resolvedElapsed, duration: resolvedDuration)
+    }
+
+    private func handleRemoteSeek(assetId: String, targetTime: TimeInterval?, delta: TimeInterval?) -> MPRemoteCommandHandlerStatus {
+        var status: MPRemoteCommandHandlerStatus = .commandFailed
+        audioQueue.sync {
+            guard let asset = self.audioList[assetId] as? AudioAsset else {
+                status = .noSuchContent
+                return
+            }
+
+            let currentPosition = asset.getCurrentTime()
+            let duration = asset.getDuration()
+
+            // Determine target position
+            let desiredTime = targetTime ?? (currentPosition + (delta ?? 0))
+            let clampedTime: TimeInterval
+            if duration.isFinite && duration > 0 {
+                clampedTime = min(max(desiredTime, 0), duration)
+            } else {
+                clampedTime = max(desiredTime, 0)
+            }
+
+            asset.setCurrentTime(time: clampedTime) { [weak self] in
+                guard let self else { return }
+                self.refreshNowPlayingPosition(for: assetId, asset: asset, elapsedTime: clampedTime, duration: duration)
+            }
+
+            status = .success
+        }
+        return status
     }
 
     /// Loads an image from a local file path or a remote URL and delivers it to the completion handler.
