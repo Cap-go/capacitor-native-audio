@@ -31,4 +31,4 @@ This Vite + React application demonstrates how to use `@capgo/native-audio` with
 - Display of current playback time and duration
 - Remote cache clearing for streaming assets
 
-The example references the local plugin source via `"@capgo/native-audio": "file:.."`, so any local changes to the plugin code are picked up after reinstalling dependencies.
+The example references the local plugin source via `"@capgo/native-audio": ".."`, so any local changes to the plugin code are picked up after reinstalling dependencies.
