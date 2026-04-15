@@ -521,6 +521,9 @@ const App = () => {
             Clear Remote Cache
           </button>
         </div>
+        <p className="status-message status-message--inline" aria-live="polite">
+          Status: {statusMessage}
+        </p>
       </section>
 
       <section className="panel">
@@ -701,9 +704,9 @@ const App = () => {
       <section className="panel">
         <h2>Try it on device</h2>
         <ol className="instructions">
-          <li>Install dependencies with <code>npm install</code> inside the <code>example</code> folder.</li>
-          <li>Start web demo via <code>npm run dev</code> or sync native platforms with <code>npm run sync</code>.</li>
-          <li>Run <code>npm run ios</code> or <code>npm run android</code> to open the Capacitor shell apps.</li>
+          <li>Install dependencies with <code>bun install</code> inside the <code>example-app</code> folder.</li>
+          <li>Start the web demo via <code>bun run dev</code> or sync native platforms with <code>bun run sync</code>.</li>
+          <li>Run <code>bun run ios</code> or <code>bun run android</code> to open the Capacitor shell apps.</li>
         </ol>
       </section>
     </main>

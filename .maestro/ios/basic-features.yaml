@@ -1,0 +1,5 @@
+appId: app.capgo.nativeaudio
+---
+- launchApp:
+    clearState: true
+- runFlow: ../flows/basic-local-music.yaml
