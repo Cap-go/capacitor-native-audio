@@ -376,6 +376,37 @@ export interface CurrentTimeEvent {
 
 export type CurrentTimeListener = (state: CurrentTimeEvent) => void;
 
+export type PlaybackStateValue = 'playing' | 'paused' | 'stopped';
+
+export interface PlaybackStateEvent {
+  /**
+   * Asset Id of the audio
+   */
+  assetId: string;
+  /**
+   * Resolved playback state after a local or remote transport action.
+   */
+  state: PlaybackStateValue;
+  /**
+   * Reason for the state change, for example `play`, `pause`, `remotePlay`, or `complete`.
+   */
+  reason: string;
+  /**
+   * Whether the asset is currently playing.
+   */
+  isPlaying: boolean;
+  /**
+   * Current playback position in seconds when available.
+   */
+  currentTime?: number;
+  /**
+   * Total playback duration in seconds when available.
+   */
+  duration?: number;
+}
+
+export type PlaybackStateListener = (state: PlaybackStateEvent) => void;
+
 export interface NativeAudio {
   /**
    * Configure the audio player
@@ -563,6 +594,13 @@ export interface NativeAudio {
    * return {@link CurrentTimeEvent}
    */
   addListener(eventName: 'currentTime', listenerFunc: CurrentTimeListener): Promise<PluginListenerHandle>;
+  /**
+   * Listen for playback state changes, including notification and lock-screen transport controls.
+   *
+   * @since 8.3.15
+   * return {@link PlaybackStateEvent}
+   */
+  addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener): Promise<PluginListenerHandle>;
   /**
    * Clear the audio cache for remote audio files
    * @since 6.5.0

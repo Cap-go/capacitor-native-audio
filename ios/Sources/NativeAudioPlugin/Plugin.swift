@@ -200,8 +200,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             asset.resume()
             updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
         }
-        if let t = restoredTime {
-            asset.setCurrentTime(time: t) { [weak self] in
+        if let resumeTime = restoredTime {
+            asset.setCurrentTime(time: resumeTime) { [weak self] in
                 guard let self else { return }
                 audioQueue.async(flags: .barrier, execute: resumeAndRefreshNowPlaying)
             }
@@ -971,6 +971,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
+    // swiftlint:disable:next function_body_length
     @objc func resume(_ call: CAPPluginCall) {
         let audioId = call.getString(Constant.AssetIdKey) ?? ""
         audioQueue.sync {
@@ -1020,8 +1021,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 call.resolve()
             }
 
-            if let t = restoredTime {
-                audioAsset.setCurrentTime(time: t) { [weak self] in
+            if let resumeTime = restoredTime {
+                audioAsset.setCurrentTime(time: resumeTime) { [weak self] in
                     guard let self else { return }
                     self.audioQueue.async(flags: .barrier, execute: finishResume)
                 }
@@ -1552,6 +1553,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         call.resolve()
     }
 
+    // swiftlint:disable cyclomatic_complexity
     /// Updates the system Now Playing information for the specified audio asset.
     ///
     /// Looks up stored metadata for `audioId` and publishes title, artist, album, artwork (if provided),
@@ -1613,6 +1615,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         }
     }
+    // swiftlint:enable cyclomatic_complexity
 
     /// Clears the Now Playing info when the plugin is no longer the active notifier.
     private func clearNowPlayingInfo() {
