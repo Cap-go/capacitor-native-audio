@@ -90,6 +90,7 @@ public class RemoteAudioAsset: AudioAsset {
             guard let self else { return }
             self.owner?.notifyListeners("complete", data: ["assetId": self.assetId])
             self.dispatchedCompleteMap[self.assetId] = true
+            self.owner?.handlePlaybackCompletion(assetId: self.assetId, audioAsset: self)
             self.onComplete?()
         }
     }

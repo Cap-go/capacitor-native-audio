@@ -96,6 +96,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private final Map<String, Handler> pendingPlayHandlers = new ConcurrentHashMap<>();
     private final Map<String, Runnable> pendingPlayRunnables = new ConcurrentHashMap<>();
     private final Map<String, JSObject> audioData = new ConcurrentHashMap<>();
+    private final Map<String, Integer> playbackStateByAssetId = new ConcurrentHashMap<>();
 
     // Notification center support
     private boolean showNotification = false;
@@ -139,6 +140,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 for (AudioAsset audio : audioAssetList.values()) {
                     if (audio.isPlaying()) {
                         audio.pause();
+                        updateTrackedPlaybackState(audio.getAssetId(), PlaybackStateCompat.STATE_PAUSED);
                         resumeList.add(audio);
                     }
                 }
@@ -149,6 +151,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     while (!resumeList.isEmpty()) {
                         AudioAsset audio = resumeList.remove(0);
                         audio.resume();
+                        updateTrackedPlaybackState(audio.getAssetId(), PlaybackStateCompat.STATE_PLAYING);
                     }
                 }
                 syncCurrentPlaybackState("audioFocusGain");
@@ -157,6 +160,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 String stoppedAssetId = currentlyPlayingAssetId;
                 for (AudioAsset audio : audioAssetList.values()) {
                     audio.stop();
+                    updateTrackedPlaybackState(audio.getAssetId(), PlaybackStateCompat.STATE_STOPPED);
                 }
                 audioManager.abandonAudioFocus(this);
                 if (isStringValid(stoppedAssetId)) {
@@ -189,6 +193,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         boolean wasPlaying = audio.pause();
 
                         if (wasPlaying) {
+                            updateTrackedPlaybackState(entry.getKey(), PlaybackStateCompat.STATE_PAUSED);
                             resumeList.add(audio);
                         }
                     }
@@ -217,6 +222,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
                     if (audio != null) {
                         audio.resume();
+                        updateTrackedPlaybackState(audio.getAssetId(), PlaybackStateCompat.STATE_PLAYING);
                     }
                 }
             }
@@ -438,6 +444,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                                     assetToUnload.unload();
                                                     NativeAudio.this.audioAssetList.remove(assetId);
                                                 }
+                                                NativeAudio.this.clearTrackedPlaybackState(assetId);
 
                                                 // Remove from tracking sets
                                                 NativeAudio.this.playOnceAssets.remove(assetId);
@@ -471,6 +478,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                             // Auto-play if requested
                             if (autoPlay) {
                                 asset.play(0.0);
+                                updateTrackedPlaybackState(assetId, PlaybackStateCompat.STATE_PLAYING);
 
                                 // Update notification if enabled
                                 if (showNotification) {
@@ -493,6 +501,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                                 failedAsset.unload();
                                 NativeAudio.this.audioAssetList.remove(assetId);
                             }
+                            NativeAudio.this.clearTrackedPlaybackState(assetId);
                             call.reject("Failed to load asset for playOnce: " + ex.getMessage());
                         }
                     } catch (Exception ex) {
@@ -617,6 +626,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 handleFadeOut(asset, audioId, fadeOutDurationMs, fadeOutStartTimeSecs);
             }
 
+            updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PLAYING);
+
             if (showNotification) {
                 currentlyPlayingAssetId = audioId;
                 updateNotification(audioId);
@@ -733,6 +744,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         resumeList.add(asset);
                     }
 
+                    updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PAUSED);
+
                     // Update notification when paused
                     if (showNotification) {
                         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED);
@@ -779,9 +792,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     data.remove("volumeBeforePause");
                     setAudioAssetData(audioId, data);
                     resumeList.add(asset);
+                    updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PLAYING);
 
                     // Update notification when resumed
                     if (showNotification) {
+                        currentlyPlayingAssetId = audioId;
                         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING);
                         updateNotification(audioId);
                     }
@@ -820,6 +835,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         clearFadeOutToStopTimer(audioId);
                         stopAudio(audioId, fadeOut, fadeOutDurationMs);
                         audioData.remove(audioId);
+                        updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_STOPPED);
 
                         // Clear notification when stopped
                         if (showNotification) {
@@ -855,6 +871,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     clearFadeOutToStopTimer(audioId);
                     asset.unload();
                     audioAssetList.remove(audioId);
+                    clearTrackedPlaybackState(audioId);
                     call.resolve();
                 } else {
                     call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
@@ -1011,6 +1028,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         JSObject ret = new JSObject();
         ret.put("assetId", assetId);
         notifyListeners("complete", ret);
+
+        updateTrackedPlaybackState(assetId, PlaybackStateCompat.STATE_STOPPED);
 
         if (assetId != null && assetId.equals(currentlyPlayingAssetId)) {
             clearNotification();
@@ -1267,6 +1286,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     } else {
                         asset.play(time);
                     }
+
+                    updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PLAYING);
 
                     // Update notification if enabled
                     if (showNotification) {
@@ -1550,6 +1571,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         if (!asset.isPlaying()) {
                             asset.resume();
                         }
+                        updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PLAYING);
                         updateNotification(audioId);
                         notifyPlaybackState(audioId, "remotePlay");
                     });
@@ -1559,6 +1581,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 public void onPause() {
                     handleCurrentMediaAction("pausing", (audioId, asset) -> {
                         asset.pause();
+                        updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PAUSED);
                         updateNotification(audioId);
                         notifyPlaybackState(audioId, "remotePause");
                     });
@@ -1573,6 +1596,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         }
                         try {
                             stopAudio(audioId, false, 0);
+                            updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_STOPPED);
                             clearNotification();
                             currentlyPlayingAssetId = null;
                             notifyPlaybackState(audioId, "remoteStop");
@@ -1662,13 +1686,20 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
         // Load artwork if provided
         if (artworkUrl != null) {
+            String targetAudioId = audioId;
             loadArtwork(artworkUrl, (bitmap) -> {
+                if (mediaSession == null || !targetAudioId.equals(currentlyPlayingAssetId)) {
+                    return;
+                }
+
+                AudioAsset currentAsset = audioAssetList.get(targetAudioId);
+                int currentPlaybackState = resolvePlaybackState(targetAudioId, currentAsset);
                 if (bitmap != null) {
                     metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap);
                     metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, bitmap);
                 }
                 mediaSession.setMetadata(metadataBuilder.build());
-                showNotification(title, artist, bitmap, playbackState == PlaybackStateCompat.STATE_PLAYING);
+                showNotification(title, artist, bitmap, currentPlaybackState == PlaybackStateCompat.STATE_PLAYING);
             });
         } else {
             mediaSession.setMetadata(metadataBuilder.build());
@@ -1771,6 +1802,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         if (!isStringValid(currentlyPlayingAssetId)) {
             return;
         }
+        updateTrackedPlaybackState(currentlyPlayingAssetId, resolvePlaybackState(currentlyPlayingAssetId, getCurrentPlaybackAsset()));
         if (showNotification) {
             updateNotification(currentlyPlayingAssetId);
         }
@@ -1813,19 +1845,30 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     }
 
     private int resolvePlaybackState(String audioId, AudioAsset asset) {
-        if (!isStringValid(audioId) || asset == null) {
+        if (!isStringValid(audioId)) {
             return PlaybackStateCompat.STATE_STOPPED;
         }
 
-        try {
-            if (asset.isPlaying()) {
-                return PlaybackStateCompat.STATE_PLAYING;
+        if (asset != null) {
+            try {
+                if (asset.isPlaying()) {
+                    return PlaybackStateCompat.STATE_PLAYING;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error resolving playback state", e);
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Error resolving playback state", e);
         }
 
-        return audioId.equals(currentlyPlayingAssetId) ? PlaybackStateCompat.STATE_PAUSED : PlaybackStateCompat.STATE_STOPPED;
+        Integer trackedState = playbackStateByAssetId.get(audioId);
+        if (trackedState != null) {
+            return trackedState;
+        }
+
+        if (audioId.equals(currentlyPlayingAssetId)) {
+            return PlaybackStateCompat.STATE_PAUSED;
+        }
+
+        return PlaybackStateCompat.STATE_STOPPED;
     }
 
     private long getPlaybackPositionMs(AudioAsset asset) {
@@ -1874,6 +1917,20 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
 
         notifyListeners("playbackState", ret);
+    }
+
+    private void updateTrackedPlaybackState(String audioId, int playbackState) {
+        if (!isStringValid(audioId)) {
+            return;
+        }
+        playbackStateByAssetId.put(audioId, playbackState);
+    }
+
+    private void clearTrackedPlaybackState(String audioId) {
+        if (!isStringValid(audioId)) {
+            return;
+        }
+        playbackStateByAssetId.remove(audioId);
     }
 
     private String playbackStateToString(int playbackState) {

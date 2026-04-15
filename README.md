@@ -932,6 +932,7 @@ addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener) => 
 ```
 
 Listen for playback state changes, including notification and lock-screen transport controls.
+Emitted by Android and iOS. The current Web implementation does not emit this event.
 
 | Param              | Type                                                                    |
 | ------------------ | ----------------------------------------------------------------------- |
