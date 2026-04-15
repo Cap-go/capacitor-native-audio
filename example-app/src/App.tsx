@@ -419,6 +419,8 @@ const App = () => {
               key={definition.assetId}
               type="button"
               className={`chip ${activeAsset === key ? 'chip--active' : ''}`}
+              aria-pressed={activeAsset === key}
+              aria-label={activeAsset === key ? `${definition.label} selected` : definition.label}
               onClick={() => setActiveAsset(key as AssetKey)}
             >
               {definition.label}
@@ -521,7 +523,11 @@ const App = () => {
             Clear Remote Cache
           </button>
         </div>
-        <p className="status-message status-message--inline" aria-live="polite">
+        <p
+          className="status-message status-message--inline"
+          aria-live="polite"
+          aria-label={statusMessage}
+        >
           Status: {statusMessage}
         </p>
       </section>
