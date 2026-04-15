@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Install dependencies
         id: install_code
         run: bun i
@@ -37,13 +37,13 @@ jobs:
           java-version: '21'
       - name: Build
         id: build_code
-        run: npm run verify:android
+        run: bun run verify:android
   build_ios:
     runs-on: macOS-latest
     steps:
       - name: Check out
         uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Install dependencies
         id: install_code
         run: bun i
@@ -56,7 +56,7 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - name: Install dependencies
         id: install_code
         run: bun i
@@ -69,3 +69,116 @@ jobs:
       - name: Verify
         id: verify_code
         run: bun run verify:web
+  maestro_android:
+    runs-on: ubuntu-latest
+    name: Android Maestro smoke test
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Setup java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install dependencies
+        run: bun install
+      - name: Build plugin
+        run: bun run build
+      - name: Install example app dependencies
+        run: bun run example:install
+      - name: Build example app web bundle
+        run: bun run example:build
+      - name: Sync Android example app
+        run: bun run example:sync:android
+      - name: Run Android Maestro smoke test
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            mkdir -p .maestro/results/android
+            (cd example-app/android && ./gradlew assembleDebug)
+            adb install -r example-app/android/app/build/outputs/apk/debug/app-debug.apk
+            maestro test --format junit --output .maestro/results/android/report.xml --debug-output .maestro/results/android --flatten-debug-output .maestro/android/basic-features.yaml
+      - name: Upload Android Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-android-results
+          path: .maestro/results/android
+          if-no-files-found: warn
+  maestro_ios:
+    runs-on: macOS-latest
+    name: iOS Maestro smoke test
+    steps:
+      - name: Check out
+        uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Setup java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+      - name: Install Maestro CLI
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Install dependencies
+        run: bun install
+      - name: Build plugin
+        run: bun run build
+      - name: Install example app dependencies
+        run: bun run example:install
+      - name: Build example app web bundle
+        run: bun run example:build
+      - name: Sync iOS example app
+        run: bun run example:sync:ios
+      - name: Boot iOS simulator
+        run: |
+          IOS_SIMULATOR_ID="$(xcrun simctl list -j devices available | ruby -rjson -e 'devices = JSON.parse(STDIN.read).fetch("devices").values.flatten; simulator = devices.find { |device| device["isAvailable"] && device["name"].start_with?("iPhone") }; abort("No available iPhone simulator found") unless simulator; puts simulator["udid"]')"
+          echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$IOS_SIMULATOR_ID" || true
+          xcrun simctl bootstatus "$IOS_SIMULATOR_ID" -b
+      - name: Build iOS example app
+        run: |
+          xcodebuild \
+            -project example-app/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination "id=${IOS_SIMULATOR_ID}" \
+            -derivedDataPath example-app/ios/build \
+            build
+      - name: Install app in simulator
+        run: xcrun simctl install "$IOS_SIMULATOR_ID" example-app/ios/build/Build/Products/Debug-iphonesimulator/App.app
+      - name: Run iOS Maestro smoke test
+        run: |
+          mkdir -p .maestro/results/ios
+          maestro test --format junit --output .maestro/results/ios/report.xml --debug-output .maestro/results/ios --flatten-debug-output .maestro/ios/basic-features.yaml
+      - name: Upload iOS Maestro artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-ios-results
+          path: .maestro/results/ios
+          if-no-files-found: warn

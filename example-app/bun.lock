@@ -6,7 +6,7 @@
       "name": "native-audio-example",
       "dependencies": {
         "@capacitor/core": "^8.0.0",
-        "@capgo/native-audio": "file:..",
+        "@capgo/native-audio": "..",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },

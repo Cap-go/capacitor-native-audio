@@ -1,0 +1,47 @@
+appId: app.capgo.nativeaudio
+name: Basic local music smoke
+---
+- assertVisible: "@capgo/native-audio"
+- tapOn:
+    text: "Local Music"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Longer local MP3 for testing seek, fades, and delayed playback\\."
+    timeout: 15000
+- scrollUntilVisible:
+    element: "Preload"
+    direction: DOWN
+    centerElement: true
+    timeout: 15000
+- tapOn: "Preload"
+- extendedWaitUntil:
+    visible: "Re-preload"
+    timeout: 15000
+- tapOn:
+    text: "Play"
+    enabled: true
+- extendedWaitUntil:
+    visible:
+      text: "Pause"
+      enabled: true
+    timeout: 15000
+- tapOn:
+    text: "Pause"
+    enabled: true
+- extendedWaitUntil:
+    visible: ".*Paused Local Music\\."
+    timeout: 15000
+- tapOn:
+    text: "Resume"
+    enabled: true
+- tapOn:
+    text: "Stop"
+    enabled: true
+- extendedWaitUntil:
+    visible: ".*Stopped Local Music\\."
+    timeout: 15000
+- tapOn: "Unload"
+- extendedWaitUntil:
+    visible: ".*Local Music unloaded\\."
+    timeout: 15000
+- assertVisible: "Preload"

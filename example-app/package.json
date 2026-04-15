@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "sync": "npx cap sync",
-    "ios": "npx cap run ios",
-    "android": "npx cap run android"
+    "sync": "bunx cap sync",
+    "sync:ios": "bunx cap sync ios",
+    "sync:android": "bunx cap sync android",
+    "ios": "bunx cap run ios",
+    "android": "bunx cap run android"
   },
   "dependencies": {
     "@capacitor/core": "^8.0.0",
-    "@capgo/native-audio": "file:..",
+    "@capgo/native-audio": "..",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
