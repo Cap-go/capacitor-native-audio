@@ -114,7 +114,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             mkdir -p .maestro/results/android
-            cd example-app/android && ./gradlew assembleDebug
+            (
+              cd example-app/android
+              ./gradlew assembleDebug
+            )
             adb install -r example-app/android/app/build/outputs/apk/debug/app-debug.apk
             maestro test --format junit --output .maestro/results/android/report.xml --debug-output .maestro/results/android --flatten-debug-output .maestro/android/basic-features.yaml
       - name: Upload Android Maestro artifacts
