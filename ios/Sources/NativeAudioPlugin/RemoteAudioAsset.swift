@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 
+// swiftlint:disable file_length
 // swiftlint:disable:next type_body_length
 public class RemoteAudioAsset: AudioAsset {
     var playerItems: [AVPlayerItem] = []
@@ -89,6 +90,7 @@ public class RemoteAudioAsset: AudioAsset {
             guard let self else { return }
             self.owner?.notifyListeners("complete", data: ["assetId": self.assetId])
             self.dispatchedCompleteMap[self.assetId] = true
+            self.owner?.handlePlaybackCompletion(assetId: self.assetId, audioAsset: self)
             self.onComplete?()
         }
     }
@@ -153,11 +155,11 @@ public class RemoteAudioAsset: AudioAsset {
             let lowerBound = max(time, 0)
             let validTime: TimeInterval
             if let item = player.currentItem {
-                let d = item.duration
-                if d == .indefinite || !d.isValid {
+                let itemDuration = item.duration
+                if itemDuration == .indefinite || !itemDuration.isValid {
                     validTime = lowerBound
                 } else {
-                    let durationSeconds = d.seconds
+                    let durationSeconds = itemDuration.seconds
                     if durationSeconds.isFinite && durationSeconds > 0 {
                         validTime = min(lowerBound, durationSeconds)
                     } else {
@@ -400,3 +402,4 @@ public class RemoteAudioAsset: AudioAsset {
     }
 
 }
+// swiftlint:enable file_length

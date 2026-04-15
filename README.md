@@ -249,6 +249,10 @@ The media control buttons automatically handle:
 - **Rewind 15s** (Android only) - Skips backward 15 seconds
 - **Forward 15s** (Android only) - Skips forward 15 seconds
 
+If you need to keep your app UI synchronized with Android notification or lock-screen controls,
+listen for the `playbackState` event. It emits the `assetId`, resolved state, reason, and the latest
+position/duration snapshot after remote transport actions.
+
 **Android Notification Controls:**
 On Android, the notification displays three action buttons in this order:
 1. ⏪ **Rewind 15s** - Skip backward 15 seconds
@@ -921,6 +925,28 @@ return {@link CurrentTimeEvent}
 --------------------
 
 
+### addListener('playbackState', ...)
+
+```typescript
+addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener) => Promise<PluginListenerHandle>
+```
+
+Listen for playback state changes, including notification and lock-screen transport controls.
+Emitted by Android and iOS. The current Web implementation does not emit this event.
+
+| Param              | Type                                                                    |
+| ------------------ | ----------------------------------------------------------------------- |
+| **`eventName`**    | <code>'playbackState'</code>                                            |
+| **`listenerFunc`** | <code><a href="#playbackstatelistener">PlaybackStateListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.3.15
+return {@link PlaybackStateEvent}
+
+--------------------
+
+
 ### clearCache()
 
 ```typescript
@@ -1139,6 +1165,18 @@ behavior details about audio mixing on iOS.
 | **`assetId`**     | <code>string</code> | Asset Id of the audio                | 6.5.0 |
 
 
+#### PlaybackStateEvent
+
+| Prop              | Type                                                              | Description                                                                            |
+| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **`assetId`**     | <code>string</code>                                               | Asset Id of the audio                                                                  |
+| **`state`**       | <code><a href="#playbackstatevalue">PlaybackStateValue</a></code> | Resolved playback state after a local or remote transport action.                      |
+| **`reason`**      | <code>string</code>                                               | Reason for the state change, for example `play`, `pause`, `remotePlay`, or `complete`. |
+| **`isPlaying`**   | <code>boolean</code>                                              | Whether the asset is currently playing.                                                |
+| **`currentTime`** | <code>number</code>                                               | Current playback position in seconds when available.                                   |
+| **`duration`**    | <code>number</code>                                               | Total playback duration in seconds when available.                                     |
+
+
 ### Type Aliases
 
 
@@ -1157,6 +1195,16 @@ Construct a type with a set of properties K of type T
 #### CurrentTimeListener
 
 <code>(state: <a href="#currenttimeevent">CurrentTimeEvent</a>): void</code>
+
+
+#### PlaybackStateListener
+
+<code>(state: <a href="#playbackstateevent">PlaybackStateEvent</a>): void</code>
+
+
+#### PlaybackStateValue
+
+<code>'playing' | 'paused' | 'stopped'</code>
 
 </docgen-api>
 
