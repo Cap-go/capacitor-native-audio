@@ -1,6 +1,6 @@
 {
   "name": "@capgo/native-audio",
-  "version": "8.4.1",
+  "version": "8.4.2",
   "description": "A native plugin for native audio engine",
   "license": "MPL-2.0",
   "main": "dist/plugin.cjs.js",
