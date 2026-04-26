@@ -34,6 +34,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "unload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setVolume", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setRate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setSkipIntervals", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "updateMetadata", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isPlaying", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCurrentTime", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getDuration", returnType: CAPPluginReturnPromise),
@@ -84,6 +86,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var pendingPlayTasks: [String: DispatchWorkItem] = [:]
     private var audioAssetData: [String: [String: Any]] = [:]
     var isRunningTests = false
+
+    /// Configurable skip intervals for the lock-screen / Control Center
+    /// rewind and fast-forward buttons. Default 15 seconds in either
+    /// direction; updated via `setSkipIntervals()`. Any positive value
+    /// is accepted.
+    private var skipBackwardSeconds: Double = 15.0
+    private var skipForwardSeconds: Double = 15.0
 
     /// Initialize plugin state and audio-related handlers, and register background behavior for session management.
     ///
@@ -373,8 +382,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             return .success
         }
 
-        // Skip forward command
-        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        // Skip forward command — interval is configurable via
+        // setSkipIntervals(); defaults to 15 seconds. preferredIntervals
+        // determines what value the OS surfaces in the lock-screen
+        // button label and what MPSkipIntervalCommandEvent.interval
+        // reports back here.
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: self.skipForwardSeconds)]
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
             guard let self else { return .commandFailed }
@@ -382,13 +395,32 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             return self.handleSeekCommand(delta: skipEvent.interval)
         }
 
-        // Skip backward command
-        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        // Skip backward command — interval is configurable via
+        // setSkipIntervals(); defaults to 15 seconds.
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: self.skipBackwardSeconds)]
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
             guard let self else { return .commandFailed }
             guard let skipEvent = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
             return self.handleSeekCommand(delta: -skipEvent.interval)
+        }
+
+        // Previous / next track commands. The plugin emits a
+        // 'remoteCommand' event for each — consumers wire the actual
+        // navigation behaviour at the JS level (chapter boundaries
+        // inside a single asset, swap to the next album track via
+        // unload + preload, jump to the next podcast episode, etc.).
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.notifyRemoteCommand(command: "previousTrack")
+            return .success
+        }
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.notifyRemoteCommand(command: "nextTrack")
+            return .success
         }
 
         // Scrub / change position command
@@ -457,6 +489,19 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         return .success
+    }
+
+    /// Emit a 'remoteCommand' event so JS consumers can react to the
+    /// lock-screen / Bluetooth-headset commands the plugin doesn't
+    /// have built-in playback handling for (currently: previousTrack,
+    /// nextTrack). Includes the currently-displayed assetId so chrome
+    /// can scope its response.
+    private func notifyRemoteCommand(command: String) {
+        var data: [String: Any] = ["command": command]
+        if let assetId = self.currentlyPlayingAssetId {
+            data["assetId"] = assetId
+        }
+        self.notifyListeners("remoteCommand", data: data)
     }
 
     @objc func setDebugMode(_ call: CAPPluginCall) {
@@ -1305,6 +1350,101 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             let rate = min(max(call.getFloat(Constant.Rate) ?? Constant.DefaultRate, Constant.MinRate), Constant.MaxRate)
             audioAsset.setRate(rate: rate as NSNumber)
+            call.resolve()
+        }
+    }
+
+    /// Configure the skip intervals used by the lock-screen / Control
+    /// Center rewind and fast-forward buttons. Either field is
+    /// optional — fields left unset retain their previous value
+    /// (defaults to 15 seconds in either direction).
+    ///
+    /// On iOS the new values are applied to MPRemoteCommandCenter's
+    /// preferredIntervals, which determines both the value the OS
+    /// surfaces in the button label and the interval reported back via
+    /// MPSkipIntervalCommandEvent.
+    @objc func setSkipIntervals(_ call: CAPPluginCall) {
+        if let backward = call.getDouble("backwardSec"), backward > 0 {
+            self.skipBackwardSeconds = backward
+        }
+        if let forward = call.getDouble("forwardSec"), forward > 0 {
+            self.skipForwardSeconds = forward
+        }
+
+        // MPRemoteCommandCenter mutations should happen on the main queue.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                call.resolve()
+                return
+            }
+            let commandCenter = MPRemoteCommandCenter.shared()
+            commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: self.skipBackwardSeconds)]
+            commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: self.skipForwardSeconds)]
+            call.resolve()
+        }
+    }
+
+    /// Update the notification-center / lock-screen metadata for an asset
+    /// after preload, without re-loading the audio.
+    ///
+    /// `preload()` accepts a `notificationMetadata` payload that the plugin
+    /// stashes in `notificationMetadataMap` and pushes to MPNowPlayingInfoCenter
+    /// when playback starts. There was no path to refresh that metadata
+    /// during playback — once preload had run, calling preload again with
+    /// new metadata required unloading and re-loading the asset (which
+    /// resets playback position). `updateMetadata` fills that gap: it
+    /// merges the new fields into `notificationMetadataMap[assetId]` and,
+    /// if that asset is the one currently displayed in Now Playing,
+    /// pushes the refreshed metadata to MPNowPlayingInfoCenter immediately.
+    ///
+    /// Useful for chapter changes inside an episodic piece, multi-track
+    /// album navigation, dynamic title/artist updates, late-arriving
+    /// artwork — anything that happens after preload.
+    ///
+    /// `assetId` is optional: if omitted, the plugin updates whichever
+    /// asset is currently displayed in Now Playing
+    /// (`currentlyPlayingAssetId`). Updates are partial — only fields
+    /// the caller passes are merged in; existing fields are preserved.
+    @objc func updateMetadata(_ call: CAPPluginCall) {
+        let providedAssetId = call.getString(Constant.AssetId)
+        let resolvedAssetId = providedAssetId ?? currentlyPlayingAssetId
+
+        guard let assetId = resolvedAssetId, !assetId.isEmpty else {
+            call.reject("No assetId provided and no asset is currently playing")
+            return
+        }
+
+        var update: [String: String] = [:]
+        if let title = call.getString("title") { update["title"] = title }
+        if let artist = call.getString("artist") { update["artist"] = artist }
+        if let album = call.getString("album") { update["album"] = album }
+        if let artworkUrl = call.getString("artworkUrl") { update["artworkUrl"] = artworkUrl }
+
+        if update.isEmpty {
+            call.resolve()
+            return
+        }
+
+        audioQueue.sync {
+            self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: true)
+            defer { self.audioQueue.setSpecific(key: self.audioQueueContextKey, value: nil) }
+
+            // Merge into existing metadata so partial updates don't
+            // clobber unchanged fields.
+            var existing = self.notificationMetadataMap[assetId] ?? [:]
+            for (key, value) in update {
+                existing[key] = value
+            }
+            self.notificationMetadataMap[assetId] = existing
+
+            // Push the refreshed metadata to the lock-screen if this
+            // asset is the one currently displayed.
+            if self.showNotification,
+               self.currentlyPlayingAssetId == assetId,
+               let audioAsset = self.audioList[assetId] as? AudioAsset {
+                self.updateNowPlayingInfo(audioId: assetId, audioAsset: audioAsset)
+            }
+
             call.resolve()
         }
     }

@@ -14,6 +14,8 @@ import type {
   PlayOnceOptions,
   PlayOnceResult,
   PreloadOptions,
+  SkipIntervalsOptions,
+  UpdateMetadataOptions,
 } from './definitions';
 import { NativeAudio } from './definitions';
 
@@ -498,6 +500,24 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     audio.playbackRate = options.rate;
+  }
+
+  async setSkipIntervals(_options: SkipIntervalsOptions): Promise<void> {
+    // Web has no analogue to MPRemoteCommandCenter / MediaSessionCompat
+    // skip intervals — the Web Media Session API's seekbackward /
+    // seekforward action handlers don't take a preferred-interval hint
+    // (consumers configure the seek delta inside the handler itself).
+    // This stub exists so the cross-platform contract holds.
+    this.logWarning('setSkipIntervals is a no-op on web — configure your seekbackward/seekforward handlers directly.');
+  }
+
+  async updateMetadata(_options: UpdateMetadataOptions): Promise<void> {
+    // Web doesn't have an analogue to MPNowPlayingInfoCenter or the
+    // Android MediaSession that the native plugins push to. The Web
+    // Media Session API is a workable fit for parity but consumers
+    // typically wire it themselves at the app level. This stub exists
+    // so the cross-platform contract holds.
+    this.logWarning('updateMetadata is not supported on web — wire the Web Media Session API at the app level.');
   }
 
   async isPlaying(options: Assets): Promise<{ isPlaying: boolean }> {

@@ -106,7 +106,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private static final int NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "native_audio_channel";
     private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 512;
-    private static final double NOTIFICATION_SKIP_SECONDS = 15.0;
+    private static final double DEFAULT_NOTIFICATION_SKIP_SECONDS = 15.0;
+    /**
+     * Configurable skip intervals for the notification's rewind / fast-forward
+     * actions. Defaults to 15 seconds in either direction; set via
+     * {@code setSkipIntervals()}. Any positive value is accepted.
+     */
+    private double notificationSkipBackwardSeconds = DEFAULT_NOTIFICATION_SKIP_SECONDS;
+    private double notificationSkipForwardSeconds = DEFAULT_NOTIFICATION_SKIP_SECONDS;
 
     // Track playOnce assets for automatic cleanup
     private Set<String> playOnceAssets = new HashSet<>();
@@ -944,6 +951,78 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
+    /**
+     * Update the lock-screen / notification-center metadata for an asset
+     * after preload, without re-loading the audio.
+     *
+     * Mirrors the iOS `updateMetadata` method: merges the supplied fields
+     * (title, artist, album, artworkUrl) into `notificationMetadataMap[assetId]`
+     * and, if that asset is the one currently displayed in the MediaSession,
+     * refreshes it via `updateNotification(audioId)` immediately.
+     *
+     * `assetId` is optional — if omitted, the plugin updates whichever
+     * asset is currently displayed (`currentlyPlayingAssetId`). Updates
+     * are partial; unchanged fields are preserved.
+     */
+    @PluginMethod
+    public void updateMetadata(PluginCall call) {
+        try {
+            String providedAssetId = call.getString(ASSET_ID);
+            String assetId = isStringValid(providedAssetId) ? providedAssetId : currentlyPlayingAssetId;
+
+            if (!isStringValid(assetId)) {
+                call.reject("No assetId provided and no asset is currently playing");
+                return;
+            }
+
+            // Build a partial-update map from the call, only including
+            // fields the caller actually passed.
+            Map<String, String> update = new HashMap<>();
+            if (call.hasOption("title")) {
+                String value = call.getString("title");
+                if (value != null) update.put("title", value);
+            }
+            if (call.hasOption("artist")) {
+                String value = call.getString("artist");
+                if (value != null) update.put("artist", value);
+            }
+            if (call.hasOption("album")) {
+                String value = call.getString("album");
+                if (value != null) update.put("album", value);
+            }
+            if (call.hasOption("artworkUrl")) {
+                String value = call.getString("artworkUrl");
+                if (value != null) update.put("artworkUrl", value);
+            }
+
+            if (update.isEmpty()) {
+                call.resolve();
+                return;
+            }
+
+            // Merge into existing metadata so partial updates don't
+            // clobber unchanged fields.
+            Map<String, String> existing = notificationMetadataMap.get(assetId);
+            if (existing == null) {
+                existing = new HashMap<>();
+            } else {
+                existing = new HashMap<>(existing);
+            }
+            existing.putAll(update);
+            notificationMetadataMap.put(assetId, existing);
+
+            // Push the refreshed metadata to the MediaSession if this
+            // asset is the one currently displayed.
+            if (showNotification && assetId.equals(currentlyPlayingAssetId)) {
+                updateNotification(assetId);
+            }
+
+            call.resolve();
+        } catch (Exception ex) {
+            call.reject(ex.getMessage());
+        }
+    }
+
     @PluginMethod
     public void isPlaying(final PluginCall call) {
         try {
@@ -966,6 +1045,33 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             } else {
                 call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
             }
+        } catch (Exception ex) {
+            call.reject(ex.getMessage());
+        }
+    }
+
+    /**
+     * Configure the skip intervals used by the lock-screen / notification's
+     * rewind and fast-forward buttons. Either field is optional — fields
+     * left unset retain their previous value (defaults to 15 seconds).
+     * Mirrors the iOS `setSkipIntervals` method.
+     */
+    @PluginMethod
+    public void setSkipIntervals(PluginCall call) {
+        try {
+            if (call.hasOption("backwardSec")) {
+                Double bw = call.getDouble("backwardSec");
+                if (bw != null && bw > 0) {
+                    notificationSkipBackwardSeconds = bw;
+                }
+            }
+            if (call.hasOption("forwardSec")) {
+                Double fw = call.getDouble("forwardSec");
+                if (fw != null && fw > 0) {
+                    notificationSkipForwardSeconds = fw;
+                }
+            }
+            call.resolve();
         } catch (Exception ex) {
             call.reject(ex.getMessage());
         }
@@ -1558,7 +1664,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 PlaybackStateCompat.ACTION_STOP |
                 PlaybackStateCompat.ACTION_REWIND |
                 PlaybackStateCompat.ACTION_FAST_FORWARD |
-                PlaybackStateCompat.ACTION_SEEK_TO
+                PlaybackStateCompat.ACTION_SEEK_TO |
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                PlaybackStateCompat.ACTION_SKIP_TO_NEXT
         );
         mediaSession.setPlaybackState(stateBuilder.build());
 
@@ -1611,11 +1719,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     handleCurrentMediaAction("rewinding", (audioId, asset) -> {
                         double currentPosition = asset.getCurrentPosition();
                         double duration = asset.getDuration();
-                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, -NOTIFICATION_SKIP_SECONDS);
+                        double skipSeconds = notificationSkipBackwardSeconds;
+                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, -skipSeconds);
                         asset.setCurrentPosition(newPosition);
                         updatePlaybackState(resolvePlaybackState(audioId, asset), asset);
                         notifyPlaybackState(audioId, "remoteRewind");
-                        Log.d(TAG, "Rewind 15s: " + currentPosition + " -> " + newPosition);
+                        Log.d(TAG, "Rewind " + skipSeconds + "s: " + currentPosition + " -> " + newPosition);
                     });
                 }
 
@@ -1624,11 +1733,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     handleCurrentMediaAction("fast forwarding", (audioId, asset) -> {
                         double currentPosition = asset.getCurrentPosition();
                         double duration = asset.getDuration();
-                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, NOTIFICATION_SKIP_SECONDS);
+                        double skipSeconds = notificationSkipForwardSeconds;
+                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, skipSeconds);
                         asset.setCurrentPosition(newPosition);
                         updatePlaybackState(resolvePlaybackState(audioId, asset), asset);
                         notifyPlaybackState(audioId, "remoteFastForward");
-                        Log.d(TAG, "Fast forward 15s: " + currentPosition + " -> " + newPosition);
+                        Log.d(TAG, "Fast forward " + skipSeconds + "s: " + currentPosition + " -> " + newPosition);
                     });
                 }
 
@@ -1642,6 +1752,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         notifyPlaybackState(audioId, "remoteSeek");
                         Log.d(TAG, "Seek to: " + positionInSeconds);
                     });
+                }
+
+                // Previous / next track — emitted as a 'remoteCommand'
+                // event so JS consumers can wire chapter navigation,
+                // album-track swap, or next-podcast-episode behaviour
+                // at the app level (the plugin doesn't have built-in
+                // playback handling for these).
+                @Override
+                public void onSkipToPrevious() {
+                    notifyRemoteCommand("previousTrack");
+                }
+
+                @Override
+                public void onSkipToNext() {
+                    notifyRemoteCommand("nextTrack");
                 }
             }
         );
@@ -1917,6 +2042,22 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
 
         notifyListeners("playbackState", ret);
+    }
+
+    /**
+     * Emit a 'remoteCommand' event so JS consumers can react to the
+     * lock-screen / Bluetooth-headset commands the plugin doesn't have
+     * built-in playback handling for (currently: previousTrack,
+     * nextTrack). Includes the currently-displayed assetId when one
+     * exists so chrome can scope its response.
+     */
+    private void notifyRemoteCommand(String command) {
+        JSObject ret = new JSObject();
+        ret.put("command", command);
+        if (isStringValid(currentlyPlayingAssetId)) {
+            ret.put("assetId", currentlyPlayingAssetId);
+        }
+        notifyListeners("remoteCommand", ret);
     }
 
     private void updateTrackedPlaybackState(String audioId, int playbackState) {

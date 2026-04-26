@@ -230,6 +230,62 @@ export interface ConfigureOptions {
 }
 
 /**
+ * Options for `setSkipIntervals()` — configure the skip intervals used
+ * by the lock-screen / notification-center rewind and fast-forward
+ * buttons. Either field is optional; fields left unset retain their
+ * previous value (default: 15 seconds in either direction).
+ *
+ * @platform iOS, Android
+ * @since 8.4.3
+ */
+export interface SkipIntervalsOptions {
+  /**
+   * Skip-backward interval in seconds. Must be positive.
+   */
+  backwardSec?: number;
+  /**
+   * Skip-forward interval in seconds. Must be positive.
+   */
+  forwardSec?: number;
+}
+
+/**
+ * Options for `updateMetadata()` — refresh the notification-center /
+ * lock-screen metadata for an already-loaded asset without re-preloading.
+ *
+ * `assetId` is optional. If omitted, the plugin updates whichever asset
+ * is currently displayed in Now Playing (the most recent `play()` /
+ * `playOnce()` target). All metadata fields are individually optional;
+ * only fields you pass are merged in, preserving any unchanged fields.
+ *
+ * @platform iOS, Android
+ * @since 8.4.3
+ */
+export interface UpdateMetadataOptions {
+  /**
+   * Asset Id to update. When omitted, the plugin updates the asset
+   * currently displayed in the notification center / lock screen.
+   */
+  assetId?: string;
+  /**
+   * Updated title. Pass `''` to clear.
+   */
+  title?: string;
+  /**
+   * Updated artist. Pass `''` to clear.
+   */
+  artist?: string;
+  /**
+   * Updated album. Pass `''` to clear.
+   */
+  album?: string;
+  /**
+   * URL or local path to updated artwork.
+   */
+  artworkUrl?: string;
+}
+
+/**
  * Metadata to display in the notification center, Control Center (iOS), and lock screen
  * when `showNotification` is enabled in `configure()`.
  *
@@ -407,6 +463,88 @@ export interface PlaybackStateEvent {
 
 export type PlaybackStateListener = (state: PlaybackStateEvent) => void;
 
+/**
+ * Payload for the `interrupt` event.
+ *
+ * Emitted by iOS when the system audio session is interrupted (phone call,
+ * Siri, alarm, another app taking the audio session). Wraps the AVAudioSession
+ * interruption notification.
+ *
+ * Two phases:
+ *   - `interrupted: true`                            — interruption began
+ *   - `interrupted: false, shouldResume: true`       — interruption ended; the
+ *                                                       OS hints that playback
+ *                                                       should resume (typical
+ *                                                       for transient system
+ *                                                       interrupts: phone call
+ *                                                       finished, Siri done,
+ *                                                       alarm dismissed)
+ *   - `interrupted: false, shouldResume: false`      — interruption ended but
+ *                                                       the OS hints not to
+ *                                                       resume (typical when
+ *                                                       another app took over
+ *                                                       the audio session)
+ *
+ * Note: the current Android and Web implementations do not emit this event.
+ *
+ * @platform iOS
+ * @since 8.4.3
+ */
+export interface InterruptEvent {
+  /**
+   * Whether the interruption is beginning (`true`) or ending (`false`).
+   */
+  interrupted: boolean;
+  /**
+   * Only present when `interrupted` is `false`. Mirrors
+   * AVAudioSession.InterruptionOptions.shouldResume — `true` means the OS
+   * suggests the app may resume playback, `false` means it should not.
+   */
+  shouldResume?: boolean;
+}
+
+export type InterruptListener = (state: InterruptEvent) => void;
+
+/**
+ * Names of the remote-transport commands the plugin emits via the
+ * `remoteCommand` event.
+ *
+ * Currently `'previousTrack'` and `'nextTrack'` — the lock-screen and
+ * Bluetooth-headset commands the plugin doesn't have built-in playback
+ * handling for. Consumers wire the actual navigation behaviour at the
+ * JS level (chapter boundaries inside a single asset, swap to the
+ * next album track via unload + preload, jump to the next podcast
+ * episode, etc.).
+ *
+ * @since 8.4.3
+ */
+export type RemoteCommandValue = 'previousTrack' | 'nextTrack';
+
+/**
+ * Payload for the `remoteCommand` event.
+ *
+ * Emitted on iOS when MPRemoteCommandCenter's previousTrackCommand or
+ * nextTrackCommand fires (tapped on the lock screen or via a paired
+ * Bluetooth device). On Android, emitted from the MediaSession
+ * onSkipToPrevious / onSkipToNext callbacks.
+ *
+ * @platform iOS, Android
+ * @since 8.4.3
+ */
+export interface RemoteCommandEvent {
+  /**
+   * The command that fired.
+   */
+  command: RemoteCommandValue;
+  /**
+   * The asset that was displayed in Now Playing when the command fired,
+   * if one was. Omitted when no asset is currently displayed.
+   */
+  assetId?: string;
+}
+
+export type RemoteCommandListener = (state: RemoteCommandEvent) => void;
+
 export interface NativeAudio {
   /**
    * Configure the audio player
@@ -546,6 +684,48 @@ export interface NativeAudio {
   setRate(options: AssetRate): Promise<void>;
 
   /**
+   * Configure the skip intervals used by the lock-screen / notification-
+   * center rewind and fast-forward buttons. Either field is optional —
+   * fields left unset retain their previous value (default: 15 seconds
+   * in either direction).
+   *
+   * On iOS the new values are applied to MPRemoteCommandCenter's
+   * preferredIntervals, which determines both the value the OS surfaces
+   * in the button label and the interval reported back via
+   * MPSkipIntervalCommandEvent. On Android the values feed the
+   * MediaSession onRewind / onFastForward callbacks.
+   *
+   * @platform iOS, Android
+   * @since 8.4.3
+   * @param options {@link SkipIntervalsOptions}
+   * @returns {Promise<void>}
+   */
+  setSkipIntervals(options: SkipIntervalsOptions): Promise<void>;
+
+  /**
+   * Update the notification-center / lock-screen metadata for an asset
+   * after preload, without re-loading the audio.
+   *
+   * `preload()` accepts a `notificationMetadata` payload that's pushed
+   * to the lock screen when playback starts. There was no path to
+   * refresh that metadata mid-playback — once preload had run, calling
+   * preload again with new metadata required unloading and re-loading
+   * the asset (which resets playback position). `updateMetadata` fills
+   * that gap: merge new fields into the existing metadata and, if that
+   * asset is the one currently displayed, push the refresh immediately.
+   *
+   * Useful for chapter changes inside an episodic piece, multi-track
+   * album navigation, dynamic title/artist updates, late-arriving
+   * artwork — anything that happens after preload.
+   *
+   * @platform iOS, Android
+   * @since 8.4.3
+   * @param options {@link UpdateMetadataOptions}
+   * @returns {Promise<void>}
+   */
+  updateMetadata(options: UpdateMetadataOptions): Promise<void>;
+
+  /**
    * Set the current time of an audio file
    * @since 6.5.0
    * @param option {@link AssetSetTime}
@@ -602,6 +782,33 @@ export interface NativeAudio {
    * return {@link PlaybackStateEvent}
    */
   addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener): Promise<PluginListenerHandle>;
+  /**
+   * Listen for AVAudioSession interruption events on iOS — phone calls,
+   * Siri, alarms, or another app taking the audio session.
+   *
+   * Use the `shouldResume` flag on the `interrupted: false` payload to
+   * decide whether to auto-resume after the interruption ends.
+   *
+   * Note: the current Android and Web implementations do not emit this event.
+   *
+   * @platform iOS
+   * @since 8.4.3
+   * return {@link InterruptEvent}
+   */
+  addListener(eventName: 'interrupt', listenerFunc: InterruptListener): Promise<PluginListenerHandle>;
+  /**
+   * Listen for remote-transport commands the plugin doesn't have
+   * built-in playback handling for — currently `previousTrack` and
+   * `nextTrack` (lock-screen / Bluetooth-headset prev/next buttons).
+   *
+   * Wire chapter navigation, album-track swap (unload + preload), or
+   * next-podcast-episode behaviour at the app level using this event.
+   *
+   * @platform iOS, Android
+   * @since 8.4.3
+   * return {@link RemoteCommandEvent}
+   */
+  addListener(eventName: 'remoteCommand', listenerFunc: RemoteCommandListener): Promise<PluginListenerHandle>;
   /**
    * Clear the audio cache for remote audio files
    * @since 6.5.0

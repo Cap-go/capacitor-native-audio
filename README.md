@@ -808,6 +808,55 @@ Set the rate of an audio file
 --------------------
 
 
+### setSkipIntervals(...)
+
+```typescript
+setSkipIntervals(options: SkipIntervalsOptions) => Promise<void>
+```
+
+Configure the skip intervals used by the lock-screen / notification-
+center rewind and fast-forward buttons. Either field is optional —
+fields left unset retain their previous value (default: 15 seconds in
+either direction).
+
+On iOS the new values are applied to MPRemoteCommandCenter's
+`preferredIntervals`, which determines both the value the OS surfaces
+in the button label and the interval reported back via
+MPSkipIntervalCommandEvent.
+
+| Param         | Type                                                                  |
+| ------------- | --------------------------------------------------------------------- |
+| **`options`** | <code><a href="#skipintervalsoptions">SkipIntervalsOptions</a></code> |
+
+**Since:** 8.4.3
+
+--------------------
+
+
+### updateMetadata(...)
+
+```typescript
+updateMetadata(options: UpdateMetadataOptions) => Promise<void>
+```
+
+Refresh the notification-center / lock-screen metadata for an asset
+after preload, without re-loading the audio. Useful for chapter
+changes, multi-track album navigation, dynamic title/artist updates,
+or late-arriving artwork.
+
+`assetId` is optional — if omitted, the plugin updates whichever
+asset is currently displayed in Now Playing. Only the fields you
+pass are merged in; existing fields are preserved.
+
+| Param         | Type                                                                            |
+| ------------- | ------------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#updatemetadataoptions">UpdateMetadataOptions</a></code>         |
+
+**Since:** 8.4.3
+
+--------------------
+
+
 ### setCurrentTime(...)
 
 ```typescript
@@ -947,6 +996,62 @@ return {@link PlaybackStateEvent}
 --------------------
 
 
+### addListener('interrupt', ...)
+
+```typescript
+addListener(eventName: 'interrupt', listenerFunc: InterruptListener) => Promise<PluginListenerHandle>
+```
+
+Listen for AVAudioSession interruption events on iOS — phone calls, Siri, alarms,
+or another app taking the audio session.
+
+The payload's `interrupted` flag distinguishes interruption-began (`true`) from
+interruption-ended (`false`). When the interruption ends, `shouldResume` mirrors
+AVAudioSession.InterruptionOptions.shouldResume — `true` for transient system
+interrupts the app should resume from, `false` when another app took the audio
+session and the app should stay paused.
+
+Note: only emitted on iOS; Android and Web implementations don't currently
+emit this event.
+
+| Param              | Type                                                            |
+| ------------------ | --------------------------------------------------------------- |
+| **`eventName`**    | <code>'interrupt'</code>                                        |
+| **`listenerFunc`** | <code><a href="#interruptlistener">InterruptListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.4.3
+return {@link InterruptEvent}
+
+--------------------
+
+
+### addListener('remoteCommand', ...)
+
+```typescript
+addListener(eventName: 'remoteCommand', listenerFunc: RemoteCommandListener) => Promise<PluginListenerHandle>
+```
+
+Listen for remote-transport commands the plugin doesn't have built-in
+playback handling for — currently `previousTrack` and `nextTrack`
+(lock-screen / Bluetooth-headset prev/next buttons). Wire chapter
+navigation, album-track swap (unload + preload), or next-podcast-
+episode behaviour at the app level using this event.
+
+| Param              | Type                                                                    |
+| ------------------ | ----------------------------------------------------------------------- |
+| **`eventName`**    | <code>'remoteCommand'</code>                                            |
+| **`listenerFunc`** | <code><a href="#remotecommandlistener">RemoteCommandListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.4.3
+return {@link RemoteCommandEvent}
+
+--------------------
+
+
 ### clearCache()
 
 ```typescript
@@ -1047,6 +1152,34 @@ behavior details about audio mixing on iOS.
 | **`artist`**     | <code>string</code> | The artist name to display in the notification center |
 | **`album`**      | <code>string</code> | The album name to display in the notification center  |
 | **`artworkUrl`** | <code>string</code> | URL or local path to the artwork/album art image      |
+
+
+#### SkipIntervalsOptions
+
+Options for `setSkipIntervals()`. Either field is optional — fields
+left unset retain their previous value (default: 15 seconds in either
+direction).
+
+| Prop              | Type                | Description                                                  |
+| ----------------- | ------------------- | ------------------------------------------------------------ |
+| **`backwardSec`** | <code>number</code> | Skip-backward interval in seconds. Must be positive.         |
+| **`forwardSec`**  | <code>number</code> | Skip-forward interval in seconds. Must be positive.          |
+
+
+#### UpdateMetadataOptions
+
+Options for `updateMetadata()`. `assetId` is optional — when omitted,
+the plugin updates whichever asset is currently displayed in Now Playing.
+All metadata fields are individually optional; only fields you pass are
+merged in (preserving any unchanged fields).
+
+| Prop             | Type                | Description                                                                                                  |
+| ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **`assetId`**    | <code>string</code> | Asset Id to update. When omitted, updates the currently-displayed asset.                                     |
+| **`title`**      | <code>string</code> | Updated title.                                                                                               |
+| **`artist`**     | <code>string</code> | Updated artist.                                                                                              |
+| **`album`**      | <code>string</code> | Updated album.                                                                                               |
+| **`artworkUrl`** | <code>string</code> | URL or local path to updated artwork.                                                                        |
 
 
 #### PlayOnceResult
@@ -1177,6 +1310,22 @@ behavior details about audio mixing on iOS.
 | **`duration`**    | <code>number</code>                                               | Total playback duration in seconds when available.                                     |
 
 
+#### InterruptEvent
+
+| Prop                | Type                 | Description                                                                                                                                                                      |
+| ------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`interrupted`**   | <code>boolean</code> | `true` when an interruption begins, `false` when it ends.                                                                                                                        |
+| **`shouldResume`**  | <code>boolean</code> | Only present when `interrupted` is `false`. Mirrors AVAudioSession.InterruptionOptions.shouldResume — `true` if the OS suggests the app may resume playback, `false` otherwise.  |
+
+
+#### RemoteCommandEvent
+
+| Prop          | Type                                                            | Description                                                                                          |
+| ------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **`command`** | <code><a href="#remotecommandvalue">RemoteCommandValue</a></code> | The command that fired.                                                                              |
+| **`assetId`** | <code>string</code>                                             | The asset displayed in Now Playing when the command fired, if any. Omitted when no asset is current. |
+
+
 ### Type Aliases
 
 
@@ -1200,6 +1349,24 @@ Construct a type with a set of properties K of type T
 #### PlaybackStateListener
 
 <code>(state: <a href="#playbackstateevent">PlaybackStateEvent</a>): void</code>
+
+
+#### InterruptListener
+
+<code>(state: <a href="#interruptevent">InterruptEvent</a>): void</code>
+
+
+#### RemoteCommandValue
+
+Names of the remote-transport commands the plugin emits via the
+`remoteCommand` event. Currently `'previousTrack'` and `'nextTrack'`.
+
+<code>'previousTrack' | 'nextTrack'</code>
+
+
+#### RemoteCommandListener
+
+<code>(state: <a href="#remotecommandevent">RemoteCommandEvent</a>): void</code>
 
 
 #### PlaybackStateValue
