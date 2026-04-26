@@ -1630,7 +1630,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 PlaybackStateCompat.ACTION_STOP |
                 PlaybackStateCompat.ACTION_REWIND |
                 PlaybackStateCompat.ACTION_FAST_FORWARD |
-                PlaybackStateCompat.ACTION_SEEK_TO
+                PlaybackStateCompat.ACTION_SEEK_TO |
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
+                PlaybackStateCompat.ACTION_SKIP_TO_NEXT
         );
         mediaSession.setPlaybackState(stateBuilder.build());
 
@@ -1714,6 +1716,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         notifyPlaybackState(audioId, "remoteSeek");
                         Log.d(TAG, "Seek to: " + positionInSeconds);
                     });
+                }
+
+                // Previous / next track — emitted as a 'remoteCommand'
+                // event so JS consumers can wire chapter navigation,
+                // album-track swap, or next-podcast-episode behaviour
+                // at the app level (the plugin doesn't have built-in
+                // playback handling for these).
+                @Override
+                public void onSkipToPrevious() {
+                    notifyRemoteCommand("previousTrack");
+                }
+
+                @Override
+                public void onSkipToNext() {
+                    notifyRemoteCommand("nextTrack");
                 }
             }
         );
@@ -1989,6 +2006,22 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
 
         notifyListeners("playbackState", ret);
+    }
+
+    /**
+     * Emit a 'remoteCommand' event so JS consumers can react to the
+     * lock-screen / Bluetooth-headset commands the plugin doesn't have
+     * built-in playback handling for (currently: previousTrack,
+     * nextTrack). Includes the currently-displayed assetId when one
+     * exists so chrome can scope its response.
+     */
+    private void notifyRemoteCommand(String command) {
+        JSObject ret = new JSObject();
+        ret.put("command", command);
+        if (isStringValid(currentlyPlayingAssetId)) {
+            ret.put("assetId", currentlyPlayingAssetId);
+        }
+        notifyListeners("remoteCommand", ret);
     }
 
     private void updateTrackedPlaybackState(String audioId, int playbackState) {

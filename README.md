@@ -1002,6 +1002,31 @@ return {@link InterruptEvent}
 --------------------
 
 
+### addListener('remoteCommand', ...)
+
+```typescript
+addListener(eventName: 'remoteCommand', listenerFunc: RemoteCommandListener) => Promise<PluginListenerHandle>
+```
+
+Listen for remote-transport commands the plugin doesn't have built-in
+playback handling for — currently `previousTrack` and `nextTrack`
+(lock-screen / Bluetooth-headset prev/next buttons). Wire chapter
+navigation, album-track swap (unload + preload), or next-podcast-
+episode behaviour at the app level using this event.
+
+| Param              | Type                                                                    |
+| ------------------ | ----------------------------------------------------------------------- |
+| **`eventName`**    | <code>'remoteCommand'</code>                                            |
+| **`listenerFunc`** | <code><a href="#remotecommandlistener">RemoteCommandListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.4.3
+return {@link RemoteCommandEvent}
+
+--------------------
+
+
 ### clearCache()
 
 ```typescript
@@ -1256,6 +1281,14 @@ merged in (preserving any unchanged fields).
 | **`shouldResume`**  | <code>boolean</code> | Only present when `interrupted` is `false`. Mirrors AVAudioSession.InterruptionOptions.shouldResume — `true` if the OS suggests the app may resume playback, `false` otherwise.  |
 
 
+#### RemoteCommandEvent
+
+| Prop          | Type                                                            | Description                                                                                          |
+| ------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **`command`** | <code><a href="#remotecommandvalue">RemoteCommandValue</a></code> | The command that fired.                                                                              |
+| **`assetId`** | <code>string</code>                                             | The asset displayed in Now Playing when the command fired, if any. Omitted when no asset is current. |
+
+
 ### Type Aliases
 
 
@@ -1284,6 +1317,19 @@ Construct a type with a set of properties K of type T
 #### InterruptListener
 
 <code>(state: <a href="#interruptevent">InterruptEvent</a>): void</code>
+
+
+#### RemoteCommandValue
+
+Names of the remote-transport commands the plugin emits via the
+`remoteCommand` event. Currently `'previousTrack'` and `'nextTrack'`.
+
+<code>'previousTrack' | 'nextTrack'</code>
+
+
+#### RemoteCommandListener
+
+<code>(state: <a href="#remotecommandevent">RemoteCommandEvent</a>): void</code>
 
 
 #### PlaybackStateValue

@@ -392,6 +392,24 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             return self.handleSeekCommand(delta: -skipEvent.interval)
         }
 
+        // Previous / next track commands. The plugin emits a
+        // 'remoteCommand' event for each — consumers wire the actual
+        // navigation behaviour at the JS level (chapter boundaries
+        // inside a single asset, swap to the next album track via
+        // unload + preload, jump to the next podcast episode, etc.).
+        commandCenter.previousTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.notifyRemoteCommand(command: "previousTrack")
+            return .success
+        }
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self = self else { return .commandFailed }
+            self.notifyRemoteCommand(command: "nextTrack")
+            return .success
+        }
+
         // Scrub / change position command
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
@@ -458,6 +476,19 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         return .success
+    }
+
+    /// Emit a 'remoteCommand' event so JS consumers can react to the
+    /// lock-screen / Bluetooth-headset commands the plugin doesn't
+    /// have built-in playback handling for (currently: previousTrack,
+    /// nextTrack). Includes the currently-displayed assetId so chrome
+    /// can scope its response.
+    private func notifyRemoteCommand(command: String) {
+        var data: [String: Any] = ["command": command]
+        if let assetId = self.currentlyPlayingAssetId {
+            data["assetId"] = assetId
+        }
+        self.notifyListeners("remoteCommand", data: data)
     }
 
     @objc func setDebugMode(_ call: CAPPluginCall) {

@@ -485,6 +485,46 @@ export interface InterruptEvent {
 
 export type InterruptListener = (state: InterruptEvent) => void;
 
+/**
+ * Names of the remote-transport commands the plugin emits via the
+ * `remoteCommand` event.
+ *
+ * Currently `'previousTrack'` and `'nextTrack'` — the lock-screen and
+ * Bluetooth-headset commands the plugin doesn't have built-in playback
+ * handling for. Consumers wire the actual navigation behaviour at the
+ * JS level (chapter boundaries inside a single asset, swap to the
+ * next album track via unload + preload, jump to the next podcast
+ * episode, etc.).
+ *
+ * @since 8.4.3
+ */
+export type RemoteCommandValue = 'previousTrack' | 'nextTrack';
+
+/**
+ * Payload for the `remoteCommand` event.
+ *
+ * Emitted on iOS when MPRemoteCommandCenter's previousTrackCommand or
+ * nextTrackCommand fires (tapped on the lock screen or via a paired
+ * Bluetooth device). On Android, emitted from the MediaSession
+ * onSkipToPrevious / onSkipToNext callbacks.
+ *
+ * @platform iOS, Android
+ * @since 8.4.3
+ */
+export interface RemoteCommandEvent {
+  /**
+   * The command that fired.
+   */
+  command: RemoteCommandValue;
+  /**
+   * The asset that was displayed in Now Playing when the command fired,
+   * if one was. Omitted when no asset is currently displayed.
+   */
+  assetId?: string;
+}
+
+export type RemoteCommandListener = (state: RemoteCommandEvent) => void;
+
 export interface NativeAudio {
   /**
    * Configure the audio player
@@ -717,6 +757,19 @@ export interface NativeAudio {
    * return {@link InterruptEvent}
    */
   addListener(eventName: 'interrupt', listenerFunc: InterruptListener): Promise<PluginListenerHandle>;
+  /**
+   * Listen for remote-transport commands the plugin doesn't have
+   * built-in playback handling for — currently `previousTrack` and
+   * `nextTrack` (lock-screen / Bluetooth-headset prev/next buttons).
+   *
+   * Wire chapter navigation, album-track swap (unload + preload), or
+   * next-podcast-episode behaviour at the app level using this event.
+   *
+   * @platform iOS, Android
+   * @since 8.4.3
+   * return {@link RemoteCommandEvent}
+   */
+  addListener(eventName: 'remoteCommand', listenerFunc: RemoteCommandListener): Promise<PluginListenerHandle>;
   /**
    * Clear the audio cache for remote audio files
    * @since 6.5.0
