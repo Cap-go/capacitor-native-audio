@@ -808,6 +808,30 @@ Set the rate of an audio file
 --------------------
 
 
+### updateMetadata(...)
+
+```typescript
+updateMetadata(options: UpdateMetadataOptions) => Promise<void>
+```
+
+Refresh the notification-center / lock-screen metadata for an asset
+after preload, without re-loading the audio. Useful for chapter
+changes, multi-track album navigation, dynamic title/artist updates,
+or late-arriving artwork.
+
+`assetId` is optional — if omitted, the plugin updates whichever
+asset is currently displayed in Now Playing. Only the fields you
+pass are merged in; existing fields are preserved.
+
+| Param         | Type                                                                            |
+| ------------- | ------------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#updatemetadataoptions">UpdateMetadataOptions</a></code>         |
+
+**Since:** 8.4.3
+
+--------------------
+
+
 ### setCurrentTime(...)
 
 ```typescript
@@ -1078,6 +1102,22 @@ behavior details about audio mixing on iOS.
 | **`artist`**     | <code>string</code> | The artist name to display in the notification center |
 | **`album`**      | <code>string</code> | The album name to display in the notification center  |
 | **`artworkUrl`** | <code>string</code> | URL or local path to the artwork/album art image      |
+
+
+#### UpdateMetadataOptions
+
+Options for `updateMetadata()`. `assetId` is optional — when omitted,
+the plugin updates whichever asset is currently displayed in Now Playing.
+All metadata fields are individually optional; only fields you pass are
+merged in (preserving any unchanged fields).
+
+| Prop             | Type                | Description                                                                                                  |
+| ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **`assetId`**    | <code>string</code> | Asset Id to update. When omitted, updates the currently-displayed asset.                                     |
+| **`title`**      | <code>string</code> | Updated title.                                                                                               |
+| **`artist`**     | <code>string</code> | Updated artist.                                                                                              |
+| **`album`**      | <code>string</code> | Updated album.                                                                                               |
+| **`artworkUrl`** | <code>string</code> | URL or local path to updated artwork.                                                                        |
 
 
 #### PlayOnceResult

@@ -944,6 +944,78 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
+    /**
+     * Update the lock-screen / notification-center metadata for an asset
+     * after preload, without re-loading the audio.
+     *
+     * Mirrors the iOS `updateMetadata` method: merges the supplied fields
+     * (title, artist, album, artworkUrl) into `notificationMetadataMap[assetId]`
+     * and, if that asset is the one currently displayed in the MediaSession,
+     * refreshes it via `updateNotification(audioId)` immediately.
+     *
+     * `assetId` is optional — if omitted, the plugin updates whichever
+     * asset is currently displayed (`currentlyPlayingAssetId`). Updates
+     * are partial; unchanged fields are preserved.
+     */
+    @PluginMethod
+    public void updateMetadata(PluginCall call) {
+        try {
+            String providedAssetId = call.getString(ASSET_ID);
+            String assetId = isStringValid(providedAssetId) ? providedAssetId : currentlyPlayingAssetId;
+
+            if (!isStringValid(assetId)) {
+                call.reject("No assetId provided and no asset is currently playing");
+                return;
+            }
+
+            // Build a partial-update map from the call, only including
+            // fields the caller actually passed.
+            Map<String, String> update = new HashMap<>();
+            if (call.hasOption("title")) {
+                String value = call.getString("title");
+                if (value != null) update.put("title", value);
+            }
+            if (call.hasOption("artist")) {
+                String value = call.getString("artist");
+                if (value != null) update.put("artist", value);
+            }
+            if (call.hasOption("album")) {
+                String value = call.getString("album");
+                if (value != null) update.put("album", value);
+            }
+            if (call.hasOption("artworkUrl")) {
+                String value = call.getString("artworkUrl");
+                if (value != null) update.put("artworkUrl", value);
+            }
+
+            if (update.isEmpty()) {
+                call.resolve();
+                return;
+            }
+
+            // Merge into existing metadata so partial updates don't
+            // clobber unchanged fields.
+            Map<String, String> existing = notificationMetadataMap.get(assetId);
+            if (existing == null) {
+                existing = new HashMap<>();
+            } else {
+                existing = new HashMap<>(existing);
+            }
+            existing.putAll(update);
+            notificationMetadataMap.put(assetId, existing);
+
+            // Push the refreshed metadata to the MediaSession if this
+            // asset is the one currently displayed.
+            if (showNotification && assetId.equals(currentlyPlayingAssetId)) {
+                updateNotification(assetId);
+            }
+
+            call.resolve();
+        } catch (Exception ex) {
+            call.reject(ex.getMessage());
+        }
+    }
+
     @PluginMethod
     public void isPlaying(final PluginCall call) {
         try {

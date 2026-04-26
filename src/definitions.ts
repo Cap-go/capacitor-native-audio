@@ -230,6 +230,42 @@ export interface ConfigureOptions {
 }
 
 /**
+ * Options for `updateMetadata()` — refresh the notification-center /
+ * lock-screen metadata for an already-loaded asset without re-preloading.
+ *
+ * `assetId` is optional. If omitted, the plugin updates whichever asset
+ * is currently displayed in Now Playing (the most recent `play()` /
+ * `playOnce()` target). All metadata fields are individually optional;
+ * only fields you pass are merged in, preserving any unchanged fields.
+ *
+ * @platform iOS, Android
+ * @since 8.4.3
+ */
+export interface UpdateMetadataOptions {
+  /**
+   * Asset Id to update. When omitted, the plugin updates the asset
+   * currently displayed in the notification center / lock screen.
+   */
+  assetId?: string;
+  /**
+   * Updated title. Pass `''` to clear.
+   */
+  title?: string;
+  /**
+   * Updated artist. Pass `''` to clear.
+   */
+  artist?: string;
+  /**
+   * Updated album. Pass `''` to clear.
+   */
+  album?: string;
+  /**
+   * URL or local path to updated artwork.
+   */
+  artworkUrl?: string;
+}
+
+/**
  * Metadata to display in the notification center, Control Center (iOS), and lock screen
  * when `showNotification` is enabled in `configure()`.
  *
@@ -586,6 +622,29 @@ export interface NativeAudio {
    * @returns {Promise<void>}
    */
   setRate(options: AssetRate): Promise<void>;
+
+  /**
+   * Update the notification-center / lock-screen metadata for an asset
+   * after preload, without re-loading the audio.
+   *
+   * `preload()` accepts a `notificationMetadata` payload that's pushed
+   * to the lock screen when playback starts. There was no path to
+   * refresh that metadata mid-playback — once preload had run, calling
+   * preload again with new metadata required unloading and re-loading
+   * the asset (which resets playback position). `updateMetadata` fills
+   * that gap: merge new fields into the existing metadata and, if that
+   * asset is the one currently displayed, push the refresh immediately.
+   *
+   * Useful for chapter changes inside an episodic piece, multi-track
+   * album navigation, dynamic title/artist updates, late-arriving
+   * artwork — anything that happens after preload.
+   *
+   * @platform iOS, Android
+   * @since 8.4.3
+   * @param options {@link UpdateMetadataOptions}
+   * @returns {Promise<void>}
+   */
+  updateMetadata(options: UpdateMetadataOptions): Promise<void>;
 
   /**
    * Set the current time of an audio file

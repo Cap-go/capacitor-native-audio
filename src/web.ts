@@ -14,6 +14,7 @@ import type {
   PlayOnceOptions,
   PlayOnceResult,
   PreloadOptions,
+  UpdateMetadataOptions,
 } from './definitions';
 import { NativeAudio } from './definitions';
 
@@ -498,6 +499,15 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
     audio.playbackRate = options.rate;
+  }
+
+  async updateMetadata(_options: UpdateMetadataOptions): Promise<void> {
+    // Web doesn't have an analogue to MPNowPlayingInfoCenter or the
+    // Android MediaSession that the native plugins push to. The Web
+    // Media Session API is a workable fit for parity but consumers
+    // typically wire it themselves at the app level. This stub exists
+    // so the cross-platform contract holds.
+    this.logWarning('updateMetadata is not supported on web — wire the Web Media Session API at the app level.');
   }
 
   async isPlaying(options: Assets): Promise<{ isPlaying: boolean }> {
