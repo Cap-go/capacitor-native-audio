@@ -808,6 +808,31 @@ Set the rate of an audio file
 --------------------
 
 
+### setSkipIntervals(...)
+
+```typescript
+setSkipIntervals(options: SkipIntervalsOptions) => Promise<void>
+```
+
+Configure the skip intervals used by the lock-screen / notification-
+center rewind and fast-forward buttons. Either field is optional —
+fields left unset retain their previous value (default: 15 seconds in
+either direction).
+
+On iOS the new values are applied to MPRemoteCommandCenter's
+`preferredIntervals`, which determines both the value the OS surfaces
+in the button label and the interval reported back via
+MPSkipIntervalCommandEvent.
+
+| Param         | Type                                                                  |
+| ------------- | --------------------------------------------------------------------- |
+| **`options`** | <code><a href="#skipintervalsoptions">SkipIntervalsOptions</a></code> |
+
+**Since:** 8.4.3
+
+--------------------
+
+
 ### updateMetadata(...)
 
 ```typescript
@@ -1127,6 +1152,18 @@ behavior details about audio mixing on iOS.
 | **`artist`**     | <code>string</code> | The artist name to display in the notification center |
 | **`album`**      | <code>string</code> | The album name to display in the notification center  |
 | **`artworkUrl`** | <code>string</code> | URL or local path to the artwork/album art image      |
+
+
+#### SkipIntervalsOptions
+
+Options for `setSkipIntervals()`. Either field is optional — fields
+left unset retain their previous value (default: 15 seconds in either
+direction).
+
+| Prop              | Type                | Description                                                  |
+| ----------------- | ------------------- | ------------------------------------------------------------ |
+| **`backwardSec`** | <code>number</code> | Skip-backward interval in seconds. Must be positive.         |
+| **`forwardSec`**  | <code>number</code> | Skip-forward interval in seconds. Must be positive.          |
 
 
 #### UpdateMetadataOptions

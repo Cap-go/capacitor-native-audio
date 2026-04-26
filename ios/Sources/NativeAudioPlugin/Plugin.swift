@@ -34,6 +34,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "unload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setVolume", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setRate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setSkipIntervals", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateMetadata", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isPlaying", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCurrentTime", returnType: CAPPluginReturnPromise),
@@ -85,6 +86,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var pendingPlayTasks: [String: DispatchWorkItem] = [:]
     private var audioAssetData: [String: [String: Any]] = [:]
     var isRunningTests = false
+
+    /// Configurable skip intervals for the lock-screen / Control Center
+    /// rewind and fast-forward buttons. Default 15 seconds in either
+    /// direction; updated via `setSkipIntervals()`. Any positive value
+    /// is accepted.
+    private var skipBackwardSeconds: Double = 15.0
+    private var skipForwardSeconds: Double = 15.0
 
     /// Initialize plugin state and audio-related handlers, and register background behavior for session management.
     ///
@@ -374,8 +382,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             return .success
         }
 
-        // Skip forward command
-        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        // Skip forward command — interval is configurable via
+        // setSkipIntervals(); defaults to 15 seconds. preferredIntervals
+        // determines what value the OS surfaces in the lock-screen
+        // button label and what MPSkipIntervalCommandEvent.interval
+        // reports back here.
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: self.skipForwardSeconds)]
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
             guard let self else { return .commandFailed }
@@ -383,8 +395,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             return self.handleSeekCommand(delta: skipEvent.interval)
         }
 
-        // Skip backward command
-        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        // Skip backward command — interval is configurable via
+        // setSkipIntervals(); defaults to 15 seconds.
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: self.skipBackwardSeconds)]
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
             guard let self else { return .commandFailed }
@@ -1337,6 +1350,36 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             let rate = min(max(call.getFloat(Constant.Rate) ?? Constant.DefaultRate, Constant.MinRate), Constant.MaxRate)
             audioAsset.setRate(rate: rate as NSNumber)
+            call.resolve()
+        }
+    }
+
+    /// Configure the skip intervals used by the lock-screen / Control
+    /// Center rewind and fast-forward buttons. Either field is
+    /// optional — fields left unset retain their previous value
+    /// (defaults to 15 seconds in either direction).
+    ///
+    /// On iOS the new values are applied to MPRemoteCommandCenter's
+    /// preferredIntervals, which determines both the value the OS
+    /// surfaces in the button label and the interval reported back via
+    /// MPSkipIntervalCommandEvent.
+    @objc func setSkipIntervals(_ call: CAPPluginCall) {
+        if let backward = call.getDouble("backwardSec"), backward > 0 {
+            self.skipBackwardSeconds = backward
+        }
+        if let forward = call.getDouble("forwardSec"), forward > 0 {
+            self.skipForwardSeconds = forward
+        }
+
+        // MPRemoteCommandCenter mutations should happen on the main queue.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                call.resolve()
+                return
+            }
+            let commandCenter = MPRemoteCommandCenter.shared()
+            commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: self.skipBackwardSeconds)]
+            commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: self.skipForwardSeconds)]
             call.resolve()
         }
     }

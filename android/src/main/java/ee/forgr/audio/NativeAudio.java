@@ -106,7 +106,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private static final int NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "native_audio_channel";
     private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 512;
-    private static final double NOTIFICATION_SKIP_SECONDS = 15.0;
+    private static final double DEFAULT_NOTIFICATION_SKIP_SECONDS = 15.0;
+    /**
+     * Configurable skip intervals for the notification's rewind / fast-forward
+     * actions. Defaults to 15 seconds in either direction; set via
+     * {@code setSkipIntervals()}. Any positive value is accepted.
+     */
+    private double notificationSkipBackwardSeconds = DEFAULT_NOTIFICATION_SKIP_SECONDS;
+    private double notificationSkipForwardSeconds = DEFAULT_NOTIFICATION_SKIP_SECONDS;
 
     // Track playOnce assets for automatic cleanup
     private Set<String> playOnceAssets = new HashSet<>();
@@ -1043,6 +1050,33 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
+    /**
+     * Configure the skip intervals used by the lock-screen / notification's
+     * rewind and fast-forward buttons. Either field is optional — fields
+     * left unset retain their previous value (defaults to 15 seconds).
+     * Mirrors the iOS `setSkipIntervals` method.
+     */
+    @PluginMethod
+    public void setSkipIntervals(PluginCall call) {
+        try {
+            if (call.hasOption("backwardSec")) {
+                Double bw = call.getDouble("backwardSec");
+                if (bw != null && bw > 0) {
+                    notificationSkipBackwardSeconds = bw;
+                }
+            }
+            if (call.hasOption("forwardSec")) {
+                Double fw = call.getDouble("forwardSec");
+                if (fw != null && fw > 0) {
+                    notificationSkipForwardSeconds = fw;
+                }
+            }
+            call.resolve();
+        } catch (Exception ex) {
+            call.reject(ex.getMessage());
+        }
+    }
+
     @PluginMethod
     public void clearCache(PluginCall call) {
         try {
@@ -1685,11 +1719,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     handleCurrentMediaAction("rewinding", (audioId, asset) -> {
                         double currentPosition = asset.getCurrentPosition();
                         double duration = asset.getDuration();
-                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, -NOTIFICATION_SKIP_SECONDS);
+                        double skipSeconds = notificationSkipBackwardSeconds;
+                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, -skipSeconds);
                         asset.setCurrentPosition(newPosition);
                         updatePlaybackState(resolvePlaybackState(audioId, asset), asset);
                         notifyPlaybackState(audioId, "remoteRewind");
-                        Log.d(TAG, "Rewind 15s: " + currentPosition + " -> " + newPosition);
+                        Log.d(TAG, "Rewind " + skipSeconds + "s: " + currentPosition + " -> " + newPosition);
                     });
                 }
 
@@ -1698,11 +1733,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                     handleCurrentMediaAction("fast forwarding", (audioId, asset) -> {
                         double currentPosition = asset.getCurrentPosition();
                         double duration = asset.getDuration();
-                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, NOTIFICATION_SKIP_SECONDS);
+                        double skipSeconds = notificationSkipForwardSeconds;
+                        double newPosition = clampSeekPositionSeconds(currentPosition, duration, skipSeconds);
                         asset.setCurrentPosition(newPosition);
                         updatePlaybackState(resolvePlaybackState(audioId, asset), asset);
                         notifyPlaybackState(audioId, "remoteFastForward");
-                        Log.d(TAG, "Fast forward 15s: " + currentPosition + " -> " + newPosition);
+                        Log.d(TAG, "Fast forward " + skipSeconds + "s: " + currentPosition + " -> " + newPosition);
                     });
                 }
 

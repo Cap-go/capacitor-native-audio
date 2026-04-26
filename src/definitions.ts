@@ -230,6 +230,26 @@ export interface ConfigureOptions {
 }
 
 /**
+ * Options for `setSkipIntervals()` — configure the skip intervals used
+ * by the lock-screen / notification-center rewind and fast-forward
+ * buttons. Either field is optional; fields left unset retain their
+ * previous value (default: 15 seconds in either direction).
+ *
+ * @platform iOS, Android
+ * @since 8.4.3
+ */
+export interface SkipIntervalsOptions {
+  /**
+   * Skip-backward interval in seconds. Must be positive.
+   */
+  backwardSec?: number;
+  /**
+   * Skip-forward interval in seconds. Must be positive.
+   */
+  forwardSec?: number;
+}
+
+/**
  * Options for `updateMetadata()` — refresh the notification-center /
  * lock-screen metadata for an already-loaded asset without re-preloading.
  *
@@ -662,6 +682,25 @@ export interface NativeAudio {
    * @returns {Promise<void>}
    */
   setRate(options: AssetRate): Promise<void>;
+
+  /**
+   * Configure the skip intervals used by the lock-screen / notification-
+   * center rewind and fast-forward buttons. Either field is optional —
+   * fields left unset retain their previous value (default: 15 seconds
+   * in either direction).
+   *
+   * On iOS the new values are applied to MPRemoteCommandCenter's
+   * preferredIntervals, which determines both the value the OS surfaces
+   * in the button label and the interval reported back via
+   * MPSkipIntervalCommandEvent. On Android the values feed the
+   * MediaSession onRewind / onFastForward callbacks.
+   *
+   * @platform iOS, Android
+   * @since 8.4.3
+   * @param options {@link SkipIntervalsOptions}
+   * @returns {Promise<void>}
+   */
+  setSkipIntervals(options: SkipIntervalsOptions): Promise<void>;
 
   /**
    * Update the notification-center / lock-screen metadata for an asset
