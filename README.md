@@ -947,6 +947,37 @@ return {@link PlaybackStateEvent}
 --------------------
 
 
+### addListener('interrupt', ...)
+
+```typescript
+addListener(eventName: 'interrupt', listenerFunc: InterruptListener) => Promise<PluginListenerHandle>
+```
+
+Listen for AVAudioSession interruption events on iOS — phone calls, Siri, alarms,
+or another app taking the audio session.
+
+The payload's `interrupted` flag distinguishes interruption-began (`true`) from
+interruption-ended (`false`). When the interruption ends, `shouldResume` mirrors
+AVAudioSession.InterruptionOptions.shouldResume — `true` for transient system
+interrupts the app should resume from, `false` when another app took the audio
+session and the app should stay paused.
+
+Note: only emitted on iOS; Android and Web implementations don't currently
+emit this event.
+
+| Param              | Type                                                            |
+| ------------------ | --------------------------------------------------------------- |
+| **`eventName`**    | <code>'interrupt'</code>                                        |
+| **`listenerFunc`** | <code><a href="#interruptlistener">InterruptListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.4.3
+return {@link InterruptEvent}
+
+--------------------
+
+
 ### clearCache()
 
 ```typescript
@@ -1177,6 +1208,14 @@ behavior details about audio mixing on iOS.
 | **`duration`**    | <code>number</code>                                               | Total playback duration in seconds when available.                                     |
 
 
+#### InterruptEvent
+
+| Prop                | Type                 | Description                                                                                                                                                                      |
+| ------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`interrupted`**   | <code>boolean</code> | `true` when an interruption begins, `false` when it ends.                                                                                                                        |
+| **`shouldResume`**  | <code>boolean</code> | Only present when `interrupted` is `false`. Mirrors AVAudioSession.InterruptionOptions.shouldResume — `true` if the OS suggests the app may resume playback, `false` otherwise.  |
+
+
 ### Type Aliases
 
 
@@ -1200,6 +1239,11 @@ Construct a type with a set of properties K of type T
 #### PlaybackStateListener
 
 <code>(state: <a href="#playbackstateevent">PlaybackStateEvent</a>): void</code>
+
+
+#### InterruptListener
+
+<code>(state: <a href="#interruptevent">InterruptEvent</a>): void</code>
 
 
 #### PlaybackStateValue

@@ -407,6 +407,48 @@ export interface PlaybackStateEvent {
 
 export type PlaybackStateListener = (state: PlaybackStateEvent) => void;
 
+/**
+ * Payload for the `interrupt` event.
+ *
+ * Emitted by iOS when the system audio session is interrupted (phone call,
+ * Siri, alarm, another app taking the audio session). Wraps the AVAudioSession
+ * interruption notification.
+ *
+ * Two phases:
+ *   - `interrupted: true`                            — interruption began
+ *   - `interrupted: false, shouldResume: true`       — interruption ended; the
+ *                                                       OS hints that playback
+ *                                                       should resume (typical
+ *                                                       for transient system
+ *                                                       interrupts: phone call
+ *                                                       finished, Siri done,
+ *                                                       alarm dismissed)
+ *   - `interrupted: false, shouldResume: false`      — interruption ended but
+ *                                                       the OS hints not to
+ *                                                       resume (typical when
+ *                                                       another app took over
+ *                                                       the audio session)
+ *
+ * Note: the current Android and Web implementations do not emit this event.
+ *
+ * @platform iOS
+ * @since 8.4.3
+ */
+export interface InterruptEvent {
+  /**
+   * Whether the interruption is beginning (`true`) or ending (`false`).
+   */
+  interrupted: boolean;
+  /**
+   * Only present when `interrupted` is `false`. Mirrors
+   * AVAudioSession.InterruptionOptions.shouldResume — `true` means the OS
+   * suggests the app may resume playback, `false` means it should not.
+   */
+  shouldResume?: boolean;
+}
+
+export type InterruptListener = (state: InterruptEvent) => void;
+
 export interface NativeAudio {
   /**
    * Configure the audio player
@@ -602,6 +644,20 @@ export interface NativeAudio {
    * return {@link PlaybackStateEvent}
    */
   addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener): Promise<PluginListenerHandle>;
+  /**
+   * Listen for AVAudioSession interruption events on iOS — phone calls,
+   * Siri, alarms, or another app taking the audio session.
+   *
+   * Use the `shouldResume` flag on the `interrupted: false` payload to
+   * decide whether to auto-resume after the interruption ends.
+   *
+   * Note: the current Android and Web implementations do not emit this event.
+   *
+   * @platform iOS
+   * @since 8.4.3
+   * return {@link InterruptEvent}
+   */
+  addListener(eventName: 'interrupt', listenerFunc: InterruptListener): Promise<PluginListenerHandle>;
   /**
    * Clear the audio cache for remote audio files
    * @since 6.5.0
