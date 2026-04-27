@@ -119,7 +119,7 @@ jobs:
             maestro test --format junit --output .maestro/results/android/report.xml --debug-output .maestro/results/android --flatten-debug-output .maestro/android/basic-features.yaml
       - name: Upload Android Maestro artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: maestro-android-results
           path: .maestro/results/android
@@ -177,7 +177,7 @@ jobs:
           maestro test --format junit --output .maestro/results/ios/report.xml --debug-output .maestro/results/ios --flatten-debug-output .maestro/ios/basic-features.yaml
       - name: Upload iOS Maestro artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: maestro-ios-results
           path: .maestro/results/ios
