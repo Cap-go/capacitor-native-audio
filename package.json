@@ -58,7 +58,8 @@
     "example:sync:ios": "cd example-app && bun run sync:ios",
     "test:e2e:android": "maestro test .maestro/android/basic-features.yaml",
     "test:e2e:ios": "maestro test .maestro/ios/basic-features.yaml",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "check:wiring": "node scripts/check-capacitor-plugin-wiring.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.0.0",

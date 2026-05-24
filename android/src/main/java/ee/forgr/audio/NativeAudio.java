@@ -72,6 +72,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 @UnstableApi
 @CapacitorPlugin(
+    name = "NativeAudio",
     permissions = {
         @Permission(strings = { Manifest.permission.MODIFY_AUDIO_SETTINGS }),
         @Permission(strings = { Manifest.permission.WRITE_EXTERNAL_STORAGE }),
