@@ -10,18 +10,18 @@
 <h3 align="center">Native Audio</h3>
 <p align="center">
   <strong>
-    <code>@capgo/native-audio</code>
+    <code>@capgo/capacitor-native-audio</code>
   </strong>
 </p>
 <p align="center">Capacitor plugin for playing sounds.</p>
 
 <p align="center">
   <img src="https://img.shields.io/maintenance/yes/2023?style=flat-square" />
-  <a href="https://github.com/capgo/native-audio/actions?query=workflow%3A%22Test+and+Build+Plugin%22"><img src="https://img.shields.io/github/workflow/status/@capgo/native-audio/Test%20and%20Build%20Plugin?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/capgo/native-audio"><img src="https://img.shields.io/npm/l/@capgo/native-audio?style=flat-square" /></a>
+  <a href="https://github.com/Cap-go/capacitor-native-audio/actions?query=workflow%3A%22Test+and+Build+Plugin%22"><img src="https://img.shields.io/github/workflow/status/Cap-go/capacitor-native-audio/Test%20and%20Build%20Plugin?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/l/@capgo/capacitor-native-audio?style=flat-square" /></a>
 <br>
-  <a href="https://www.npmjs.com/package/@capgo/native-audio"><img src="https://img.shields.io/npm/dw/@capgo/native-audio?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/@capgo/native-audio"><img src="https://img.shields.io/npm/v/@capgo/native-audio?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/dw/@capgo/capacitor-native-audio?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/v/@capgo/capacitor-native-audio?style=flat-square" /></a>
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 <a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-6-orange?style=flat-square" /></a>
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -91,13 +91,13 @@ The most complete doc is available here: https://capgo.app/docs/plugins/native-a
 To use npm
 
 ```bash
-npm install @capgo/native-audio
+npm install @capgo/capacitor-native-audio
 ```
 
 To use yarn
 
 ```bash
-yarn add @capgo/native-audio
+yarn add @capgo/capacitor-native-audio
 ```
 
 Sync native files
@@ -110,7 +110,7 @@ On iOS, Android and Web, no further steps are needed.
 
 ### Swift Package Manager
 
-You can also consume the iOS implementation via Swift Package Manager. In Xcode open **File → Add Package…**, point it at `https://github.com/Cap-go/capacitor-native-audio.git`, and select the `CapgoNativeAudio` library product. The package supports iOS 14 and newer alongside Capacitor 7.
+You can also consume the iOS implementation via Swift Package Manager. In Xcode open **File → Add Package…**, point it at `https://github.com/Cap-go/capacitor-native-audio.git`, and select the `CapgoCapacitorNativeAudio` library product. The package supports iOS 14 and newer alongside Capacitor 7.
 
 ## Configuration
 
@@ -197,7 +197,7 @@ You can display audio playback information in the system notification center. Th
 **Step 1: Configure the plugin with notification support**
 
 ```typescript
-import { NativeAudio } from '@capgo/native-audio'
+import { NativeAudio } from '@capgo/capacitor-native-audio'
 
 // Enable notification center display
 await NativeAudio.configure({
@@ -298,7 +298,7 @@ By default, Android apps pause audio when the app is backgrounded or the screen 
 **Step 2: Configure the plugin with background playback enabled**
 
 ```typescript
-import { NativeAudio } from '@capgo/native-audio';
+import { NativeAudio } from '@capgo/capacitor-native-audio';
 
 // Enable background playback and notification center
 await NativeAudio.configure({
@@ -441,7 +441,7 @@ bun run android  # open the Android shell app
 The UI demonstrates local asset preloading, remote streaming, playback controls, looping, live position updates, and cache clearing for remote audio.
 
 ```typescript
-import {NativeAudio} from '@capgo/native-audio'
+import {NativeAudio} from '@capgo/capacitor-native-audio'
 
 
 /**
