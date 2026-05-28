@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { NativeAudio } from '@capgo/native-audio';
+import { NativeAudio } from '@capgo/capacitor-native-audio';
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { AssetPlayOptions } from '@capgo/native-audio';
+import type { AssetPlayOptions } from '@capgo/capacitor-native-audio';
 import './App.css';
 
 type AssetKey = 'local' | 'music' | 'remote';
@@ -351,7 +351,7 @@ const App = () => {
 
   return (
     <main className="app">
-      <h1>@capgo/native-audio</h1>
+      <h1>@capgo/capacitor-native-audio</h1>
       <p className="tagline">Interactive Capacitor example with local and remote audio assets.</p>
 
       <section className="panel">

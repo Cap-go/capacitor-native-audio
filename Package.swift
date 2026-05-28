@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "CapgoNativeAudio",
+    name: "CapgoCapacitorNativeAudio",
     platforms: [
         .iOS(.v14)
     ],
     products: [
         .library(
-            name: "CapgoNativeAudio",
+            name: "CapgoCapacitorNativeAudio",
             targets: ["NativeAudioPlugin"]
         )
     ],

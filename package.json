@@ -1,5 +1,5 @@
 {
-  "name": "@capgo/native-audio",
+  "name": "@capgo/capacitor-native-audio",
   "version": "8.4.2",
   "description": "A native plugin for native audio engine",
   "license": "MPL-2.0",
@@ -14,7 +14,7 @@
     "ios/Sources",
     "ios/Tests",
     "Package.swift",
-    "CapgoNativeAudio.podspec",
+    "CapgoCapacitorNativeAudio.podspec",
     "scripts/configure-dependencies.js"
   ],
   "author": "Martin Donadieu",
@@ -37,7 +37,7 @@
   "scripts": {
     "capacitor:sync:after": "node scripts/configure-dependencies.js",
     "verify": "bun run verify:ios && bun run verify:android && bun run verify:web",
-    "verify:ios": "xcodebuild -scheme CapgoNativeAudio -destination generic/platform=iOS",
+    "verify:ios": "xcodebuild -scheme CapgoCapacitorNativeAudio -destination generic/platform=iOS",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
     "verify:web": "bun run build",
     "test": "bun run test:ios",
