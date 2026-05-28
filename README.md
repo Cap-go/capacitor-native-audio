@@ -16,21 +16,21 @@
 <p align="center">Capacitor plugin for playing sounds.</p>
 
 <p align="center">
-  <img src="https://img.shields.io/maintenance/yes/2023?style=flat-square" />
-  <a href="https://github.com/Cap-go/capacitor-native-audio/actions?query=workflow%3A%22Test+and+Build+Plugin%22"><img src="https://img.shields.io/github/workflow/status/Cap-go/capacitor-native-audio/Test%20and%20Build%20Plugin?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/l/@capgo/capacitor-native-audio?style=flat-square" /></a>
+  <img src="https://img.shields.io/maintenance/yes/2023?style=flat-square" alt="Maintenance status badge" />
+  <a href="https://github.com/Cap-go/capacitor-native-audio/actions?query=workflow%3A%22Test+and+Build+Plugin%22"><img src="https://img.shields.io/github/workflow/status/Cap-go/capacitor-native-audio/Test%20and%20Build%20Plugin?style=flat-square" alt="CI status badge" /></a>
+  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/l/@capgo/capacitor-native-audio?style=flat-square" alt="NPM license badge" /></a>
 <br>
-  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/dw/@capgo/capacitor-native-audio?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/v/@capgo/capacitor-native-audio?style=flat-square" /></a>
+  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/dw/@capgo/capacitor-native-audio?style=flat-square" alt="NPM weekly downloads badge" /></a>
+  <a href="https://www.npmjs.com/package/@capgo/capacitor-native-audio"><img src="https://img.shields.io/npm/v/@capgo/capacitor-native-audio?style=flat-square" alt="NPM version badge" /></a>
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-<a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-6-orange?style=flat-square" /></a>
+<a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-6-orange?style=flat-square" alt="All contributors badge" /></a>
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </p>
 
 # Capacitor Native Audio Plugin
 
 Capacitor plugin for native audio engine.
-Capacitor V7 - ✅ Support!
+Capacitor V8 - ✅ Support!
 
 Support local file, remote URL, and m3u8 stream
 
@@ -110,7 +110,7 @@ On iOS, Android and Web, no further steps are needed.
 
 ### Swift Package Manager
 
-You can also consume the iOS implementation via Swift Package Manager. In Xcode open **File → Add Package…**, point it at `https://github.com/Cap-go/capacitor-native-audio.git`, and select the `CapgoCapacitorNativeAudio` library product. The package supports iOS 14 and newer alongside Capacitor 7.
+You can also consume the iOS implementation via Swift Package Manager. In Xcode open **File → Add Package…**, point it at `https://github.com/Cap-go/capacitor-native-audio.git`, and select the `CapgoCapacitorNativeAudio` library product. The package supports iOS 14 and newer alongside Capacitor 8.
 
 ## Configuration
 

@@ -17,8 +17,7 @@ import androidx.media3.common.util.UnstableApi;
 
 @UnstableApi
 public class AudioDispatcher
-    implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnSeekCompleteListener
-{
+    implements MediaPlayer.OnPreparedListener, MediaPlayer.OnCompletionListener, MediaPlayer.OnSeekCompleteListener {
 
     private final String TAG = "AudioDispatcher";
     private final MediaPlayer mediaPlayer;
