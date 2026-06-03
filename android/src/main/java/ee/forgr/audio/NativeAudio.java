@@ -729,8 +729,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             if (audioAssetList.containsKey(audioId)) {
                 AudioAsset asset = audioAssetList.get(audioId);
                 if (asset != null) {
-                    boolean wasPlaying = asset.isPlaying();
-
                     JSObject data = getAudioAssetData(audioId);
                     data.put("volumeBeforePause", asset.getVolume());
                     setAudioAssetData(audioId, data);
@@ -741,9 +739,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         asset.pause();
                     }
 
-                    if (wasPlaying) {
-                        resumeList.add(asset);
-                    }
+                    resumeList.removeIf((candidate) -> candidate == asset);
 
                     updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PAUSED);
 
@@ -792,7 +788,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
                     data.remove("volumeBeforePause");
                     setAudioAssetData(audioId, data);
-                    resumeList.add(asset);
+                    resumeList.removeIf((candidate) -> candidate == asset);
                     updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PLAYING);
 
                     // Update notification when resumed

@@ -185,28 +185,25 @@ public class StreamAudioAsset extends AudioAsset {
 
     @Override
     public boolean pause() throws Exception {
-        final boolean[] wasPlaying = { false };
-        owner
-            .getActivity()
-            .runOnUiThread(() -> {
-                cancelFade();
-                if (player != null && player.isPlaying()) {
-                    player.setPlayWhenReady(false);
-                    stopCurrentTimeUpdates();
-                    wasPlaying[0] = true;
-                }
-            });
-        return wasPlaying[0];
+        return PlayerThread.call(() -> {
+            cancelFade();
+            if (player != null && player.isPlaying()) {
+                player.setPlayWhenReady(false);
+                stopCurrentTimeUpdates();
+                return true;
+            }
+            return false;
+        });
     }
 
     @Override
     public void resume() throws Exception {
-        owner
-            .getActivity()
-            .runOnUiThread(() -> {
+        PlayerThread.run(() -> {
+            if (player != null) {
                 player.setPlayWhenReady(true);
                 startCurrentTimeUpdates();
-            });
+            }
+        });
     }
 
     @Override
@@ -323,50 +320,50 @@ public class StreamAudioAsset extends AudioAsset {
 
     @Override
     public float getVolume() throws Exception {
-        if (player != null) {
-            return player.getVolume();
-        }
-        return 0;
+        return PlayerThread.call(() -> {
+            if (player != null) {
+                return player.getVolume();
+            }
+            return 0f;
+        });
     }
 
     @Override
     public boolean isPlaying() throws Exception {
-        return player != null && player.isPlaying();
+        return PlayerThread.call(() -> player != null && player.isPlaying());
     }
 
     @Override
     public double getDuration() {
-        if (isPrepared) {
-            final double[] duration = { 0 };
-            owner
-                .getActivity()
-                .runOnUiThread(() -> {
-                    if (player.getPlaybackState() == Player.STATE_READY) {
-                        long rawDuration = player.getDuration();
-                        if (rawDuration != androidx.media3.common.C.TIME_UNSET) {
-                            duration[0] = rawDuration / 1000.0;
-                        }
+        try {
+            return PlayerThread.call(() -> {
+                if (isPrepared && player != null && player.getPlaybackState() == Player.STATE_READY) {
+                    long rawDuration = player.getDuration();
+                    if (rawDuration != androidx.media3.common.C.TIME_UNSET) {
+                        return rawDuration / 1000.0;
                     }
-                });
-            return duration[0];
+                }
+                return 0.0;
+            });
+        } catch (Exception e) {
+            logger.error("Error getting duration", e);
+            return 0;
         }
-        return 0;
     }
 
     @Override
     public double getCurrentPosition() {
-        if (isPrepared) {
-            final double[] position = { 0 };
-            owner
-                .getActivity()
-                .runOnUiThread(() -> {
-                    if (player.getPlaybackState() == Player.STATE_READY) {
-                        position[0] = player.getCurrentPosition() / 1000.0;
-                    }
-                });
-            return position[0];
+        try {
+            return PlayerThread.call(() -> {
+                if (isPrepared && player != null && player.getPlaybackState() == Player.STATE_READY) {
+                    return player.getCurrentPosition() / 1000.0;
+                }
+                return 0.0;
+            });
+        } catch (Exception e) {
+            logger.error("Error getting current position", e);
+            return 0;
         }
-        return 0;
     }
 
     @Override

@@ -233,44 +233,30 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     public boolean pause() throws Exception {
-        final boolean[] wasPlaying = { false };
-        owner
-            .getActivity()
-            .runOnUiThread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        cancelFade();
-                        for (ExoPlayer player : players) {
-                            if (player != null && player.isPlaying()) {
-                                player.pause();
-                                stopCurrentTimeUpdates();
-                                wasPlaying[0] = true;
-                            }
-                        }
-                    }
+        return PlayerThread.call(() -> {
+            boolean wasPlaying = false;
+            cancelFade();
+            for (ExoPlayer player : players) {
+                if (player != null && player.isPlaying()) {
+                    player.pause();
+                    stopCurrentTimeUpdates();
+                    wasPlaying = true;
                 }
-            );
-        return wasPlaying[0];
+            }
+            return wasPlaying;
+        });
     }
 
     @Override
     public void resume() throws Exception {
-        owner
-            .getActivity()
-            .runOnUiThread(
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        for (ExoPlayer player : players) {
-                            if (player != null && !player.isPlaying()) {
-                                player.play();
-                            }
-                        }
-                        startCurrentTimeUpdates();
-                    }
+        PlayerThread.run(() -> {
+            for (ExoPlayer player : players) {
+                if (player != null && !player.isPlaying()) {
+                    player.play();
                 }
-            );
+            }
+            startCurrentTimeUpdates();
+        });
     }
 
     @Override
@@ -390,79 +376,75 @@ public class RemoteAudioAsset extends AudioAsset {
 
     @Override
     public float getVolume() throws Exception {
-        if (players.isEmpty()) {
-            throw new Exception("No ExoPlayer available");
-        }
+        return PlayerThread.call(() -> {
+            if (players.isEmpty()) {
+                throw new Exception("No ExoPlayer available");
+            }
 
-        final ExoPlayer player = players.get(playIndex);
-        return player != null ? player.getVolume() : 0;
+            final ExoPlayer player = players.get(playIndex);
+            return player != null ? player.getVolume() : 0f;
+        });
     }
 
     @Override
     public boolean isPlaying() throws Exception {
-        if (players.isEmpty() || !isPrepared) return false;
+        return PlayerThread.call(() -> {
+            if (players.isEmpty() || !isPrepared) return false;
 
-        ExoPlayer player = players.get(playIndex);
-        return player != null && player.isPlaying();
+            ExoPlayer player = players.get(playIndex);
+            return player != null && player.isPlaying();
+        });
     }
 
     @Override
     public double getDuration() {
-        logger.debug("getDuration called, players empty: " + players.isEmpty() + ", isPrepared: " + isPrepared);
-        if (!players.isEmpty() && isPrepared) {
-            final double[] duration = { 0 };
-            owner
-                .getActivity()
-                .runOnUiThread(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            ExoPlayer player = players.get(playIndex);
-                            int state = player.getPlaybackState();
-                            logger.debug("Player state: " + state + " (READY=" + Player.STATE_READY + ")");
-                            if (state == Player.STATE_READY) {
-                                long rawDuration = player.getDuration();
-                                logger.debug("Raw duration: " + rawDuration + ", TIME_UNSET=" + androidx.media3.common.C.TIME_UNSET);
-                                if (rawDuration != androidx.media3.common.C.TIME_UNSET) {
-                                    duration[0] = rawDuration / 1000.0;
-                                    logger.debug("Final duration in seconds: " + duration[0]);
-                                } else {
-                                    logger.debug("Duration is TIME_UNSET");
-                                }
-                            } else {
-                                logger.debug("Player not in READY state");
-                            }
+        try {
+            return PlayerThread.call(() -> {
+                logger.debug("getDuration called, players empty: " + players.isEmpty() + ", isPrepared: " + isPrepared);
+                if (!players.isEmpty() && isPrepared) {
+                    ExoPlayer player = players.get(playIndex);
+                    int state = player.getPlaybackState();
+                    logger.debug("Player state: " + state + " (READY=" + Player.STATE_READY + ")");
+                    if (state == Player.STATE_READY) {
+                        long rawDuration = player.getDuration();
+                        logger.debug("Raw duration: " + rawDuration + ", TIME_UNSET=" + androidx.media3.common.C.TIME_UNSET);
+                        if (rawDuration != androidx.media3.common.C.TIME_UNSET) {
+                            double duration = rawDuration / 1000.0;
+                            logger.debug("Final duration in seconds: " + duration);
+                            return duration;
                         }
+                        logger.debug("Duration is TIME_UNSET");
+                    } else {
+                        logger.debug("Player not in READY state");
                     }
-                );
-            return duration[0];
+                }
+                logger.debug("No players or not prepared for duration");
+                return 0.0;
+            });
+        } catch (Exception e) {
+            logger.error("Error getting duration", e);
+            return 0;
         }
-        logger.debug("No players or not prepared for duration");
-        return 0;
     }
 
     @Override
     public double getCurrentPosition() {
-        if (!players.isEmpty() && isPrepared) {
-            final double[] position = { 0 };
-            owner
-                .getActivity()
-                .runOnUiThread(
-                    new Runnable() {
-                        @Override
-                        public void run() {
-                            ExoPlayer player = players.get(playIndex);
-                            if (player.getPlaybackState() == Player.STATE_READY) {
-                                long rawPosition = player.getCurrentPosition();
-                                logger.debug("Raw position: " + rawPosition);
-                                position[0] = rawPosition / 1000.0;
-                            }
-                        }
+        try {
+            return PlayerThread.call(() -> {
+                if (!players.isEmpty() && isPrepared) {
+                    ExoPlayer player = players.get(playIndex);
+                    if (player.getPlaybackState() == Player.STATE_READY) {
+                        long rawPosition = player.getCurrentPosition();
+                        logger.debug("Raw position: " + rawPosition);
+                        return rawPosition / 1000.0;
                     }
-                );
-            return position[0];
+                }
+                return 0.0;
+            });
+        } catch (Exception e) {
+            logger.error("Error getting current position", e);
+            return 0;
         }
-        return 0;
     }
 
     @Override
