@@ -11,7 +11,7 @@ let package = Package(
             targets: ["CapApp-SPM"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0"),
+        .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.4.0"),
         .package(name: "CapgoCapacitorNativeAudio", path: "../../../node_modules/.bun/@capgo+capacitor-native-audio@file+../node_modules/@capgo/capacitor-native-audio")
     ],
     targets: [
