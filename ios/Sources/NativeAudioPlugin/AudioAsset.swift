@@ -21,6 +21,12 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     private var logger = Logger(logTag: "AudioAsset")
 
+    private static func isRemoteHttpUrl(_ path: String) -> Bool {
+        guard let url = URL(string: path), let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+
+
     init(owner: NativeAudio, withAssetId assetId: String, withPath path: String, withChannels channels: Int?, withVolume volume: Float?) {
         self.owner = owner
         self.assetId = assetId
@@ -39,6 +45,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
         let setupBlock = { [weak self] in
             guard let self else { return }
+            if Self.isRemoteHttpUrl(path) {
+                return
+            }
             for _ in 0..<channelCount {
                 do {
                     let player = try AVAudioPlayer(contentsOf: pathUrl)
@@ -78,6 +87,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         let channelCount = min(max(channels ?? 1, 1), Constant.MaxChannels)
         let setupBlock = { [weak self] in
             guard let self else { return }
+            if Self.isRemoteHttpUrl(path) {
+                return
+            }
             for _ in 0..<channelCount {
                 do {
                     let player = try AVAudioPlayer(contentsOf: pathUrl)
