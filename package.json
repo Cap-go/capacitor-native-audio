@@ -59,7 +59,8 @@
     "test:e2e:android": "maestro test .maestro/android/basic-features.yaml",
     "test:e2e:ios": "maestro test .maestro/ios/basic-features.yaml",
     "prepublishOnly": "bun run build",
-    "check:wiring": "node scripts/check-capacitor-plugin-wiring.mjs"
+    "check:wiring": "node scripts/check-capacitor-plugin-wiring.mjs",
+    "changelog:ai": "node scripts/generate-ai-changelog.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.0.0",
