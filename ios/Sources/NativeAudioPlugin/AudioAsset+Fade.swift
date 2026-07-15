@@ -3,11 +3,14 @@ import AVFoundation
 extension AudioAsset {
 
     func dispatchComplete() {
-        if dispatchedCompleteMap[assetId] == true {
-            return
+        owner?.executeOnAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            if self.dispatchedCompleteMap[self.assetId] == true {
+                return
+            }
+            self.owner?.notifyListeners("complete", data: ["assetId": self.assetId])
+            self.dispatchedCompleteMap[self.assetId] = true
         }
-        owner?.notifyListeners("complete", data: ["assetId": assetId])
-        dispatchedCompleteMap[assetId] = true
     }
 
     func cancelFade() {

@@ -1565,6 +1565,17 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
+    /// Async barrier write — serializes shared-state mutations onto the audio queue
+    /// WITHOUT blocking the calling thread. Runs inline when already on the queue
+    /// to preserve ordering.
+    internal func executeOnAudioQueueAsync(_ block: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            block()
+        } else {
+            audioQueue.async(flags: .barrier, execute: block)
+        }
+    }
+
     /// Use this for read-only access to shared state — avoids the .barrier write lock
     /// that `executeOnAudioQueue` applies, preventing deadlocks with third-party SDKs.
     internal func readOnAudioQueue<T>(_ block: () -> T) -> T {
