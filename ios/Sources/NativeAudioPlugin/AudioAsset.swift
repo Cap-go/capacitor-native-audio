@@ -384,7 +384,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
 
     internal func startCurrentTimeUpdates() {
         stopCurrentTimeUpdates()
-        dispatchedCompleteMap[assetId] = false
+        owner?.executeOnAudioQueueAsync { [weak self] in
+            guard let self else { return }
+            self.dispatchedCompleteMap[self.assetId] = false
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
