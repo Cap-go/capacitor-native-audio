@@ -84,6 +84,6 @@ dependencies {
     implementation 'androidx.media3:media3-database:1.10.1'
     implementation 'androidx.media3:media3-common:1.10.1'
     // Media notification support
-    implementation 'androidx.media:media:1.7.1'
+    implementation 'androidx.media:media:1.8.0'
     implementation 'androidx.core:core:1.13.1'
 }
