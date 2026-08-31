@@ -18,7 +18,7 @@ private enum PlaybackStateValue: String {
 @objc(NativeAudio)
 // swiftlint:disable:next type_body_length
 public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
-    private let pluginVersion: String = "8.4.21"
+    private let pluginVersion: String = "8.4.22"
     public let identifier = "NativeAudio"
     public let jsName = "NativeAudio"
     public let pluginMethods: [CAPPluginMethod] = [
