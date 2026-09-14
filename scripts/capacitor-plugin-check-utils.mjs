@@ -16,6 +16,10 @@ export const DEFAULT_SKIP_DIRS = new Set([
 /** @type {string | null} */
 let pluginRoot = null;
 
+function comparePath(a, b) {
+  return a.localeCompare(b);
+}
+
 export function setPluginRoot(dir) {
   pluginRoot = path.resolve(dir);
 }
@@ -83,7 +87,6 @@ export function parseArgs(argv) {
         throw new Error("[plugin-check] ERROR: invalid --dir path");
       }
       out.dir = path.resolve(raw);
-      continue;
     }
   }
   setPluginRoot(out.dir);
@@ -103,10 +106,38 @@ export function listRootFiles(pluginDir, suffix) {
       .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
       .map((entry) => path.join(resolved, entry.name))
       .filter((p) => isUnderPluginRoot(p))
-      .sort();
+      .sort(comparePath);
   } catch {
     // Unreadable plugin roots are treated as having no matching files.
     return [];
+  }
+}
+
+function fileMatchesExtensions(name, exts) {
+  for (const ext of exts) {
+    if (!/^\.[a-z0-9]+$/i.test(ext)) continue;
+    if (name.endsWith(ext)) return true;
+  }
+  return false;
+}
+
+function scanDirectory(dir, exts, skipDirs, out, stack) {
+  if (typeof dir !== "string" || dir.includes("\0") || !isUnderPluginRoot(dir)) {
+    return;
+  }
+  const entries = readdirSync(path.resolve(dir), { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (!isUnderPluginRoot(fullPath)) continue;
+    if (entry.isDirectory()) {
+      if (skipDirs.has(entry.name)) continue;
+      stack.push(fullPath);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (fileMatchesExtensions(entry.name, exts)) {
+      out.add(fullPath);
+    }
   }
 }
 
@@ -119,32 +150,11 @@ export function walkFiles(rootDir, exts, skipDirs = DEFAULT_SKIP_DIRS) {
   const stack = [resolvedRoot];
   try {
     while (stack.length) {
-      const dir = stack.pop();
-      if (typeof dir !== "string" || dir.includes("\0") || !isUnderPluginRoot(dir)) {
-        continue;
-      }
-      const entries = readdirSync(path.resolve(dir), { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (!isUnderPluginRoot(fullPath)) continue;
-        if (entry.isDirectory()) {
-          if (skipDirs.has(entry.name)) continue;
-          stack.push(fullPath);
-          continue;
-        }
-        if (!entry.isFile()) continue;
-        for (const ext of exts) {
-          if (!/^\.[a-z0-9]+$/i.test(ext)) continue;
-          if (entry.name.endsWith(ext)) {
-            out.add(fullPath);
-            break;
-          }
-        }
-      }
+      scanDirectory(stack.pop(), exts, skipDirs, out, stack);
     }
   } catch {
     // Unwalkable roots are skipped.
     return [];
   }
-  return [...out].sort();
+  return [...out].sort(comparePath);
 }
