@@ -1,4 +1,4 @@
-import { accessSync, constants, globSync, readFileSync } from "node:fs";
+import { accessSync, constants, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 export const DEFAULT_SKIP_DIRS = new Set([
@@ -99,8 +99,9 @@ export function listRootFiles(pluginDir, suffix) {
   }
   const resolved = path.resolve(pluginDir);
   try {
-    return globSync(`*${suffix}`, { cwd: resolved, nodir: true })
-      .map((name) => path.join(resolved, name))
+    return readdirSync(resolved, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(suffix))
+      .map((entry) => path.join(resolved, entry.name))
       .filter((p) => isUnderPluginRoot(p))
       .sort();
   } catch {
@@ -114,15 +115,31 @@ export function walkFiles(rootDir, exts, skipDirs = DEFAULT_SKIP_DIRS) {
     return [];
   }
   const resolvedRoot = path.resolve(rootDir);
-  const ignore = [...skipDirs].map((name) => `**/${name}/**`);
   const out = new Set();
+  const stack = [resolvedRoot];
   try {
-    for (const ext of exts) {
-      if (!/^\.[a-z0-9]+$/i.test(ext)) continue;
-      const pattern = `**/*${ext}`;
-      for (const match of globSync(pattern, { cwd: resolvedRoot, ignore, nodir: true })) {
-        const fullPath = path.join(resolvedRoot, match);
-        if (isUnderPluginRoot(fullPath)) out.add(fullPath);
+    while (stack.length) {
+      const dir = stack.pop();
+      if (typeof dir !== "string" || dir.includes("\0") || !isUnderPluginRoot(dir)) {
+        continue;
+      }
+      const entries = readdirSync(path.resolve(dir), { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (!isUnderPluginRoot(fullPath)) continue;
+        if (entry.isDirectory()) {
+          if (skipDirs.has(entry.name)) continue;
+          stack.push(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        for (const ext of exts) {
+          if (!/^\.[a-z0-9]+$/i.test(ext)) continue;
+          if (entry.name.endsWith(ext)) {
+            out.add(fullPath);
+            break;
+          }
+        }
       }
     }
   } catch {
