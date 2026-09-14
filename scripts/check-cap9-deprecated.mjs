@@ -126,11 +126,19 @@ function stripCommentsAndLiterals(line, ext) {
 
 /** @param {string} line @returns {boolean} */
 function isDeprecatedApiDeclaration(line) {
-  return (
-    /^\s*(?:@\w+\s*)*(?:public|private|protected|internal|open|static|final|\s)*\b(?:void|func)\s+\w+\s*\(/.test(
-      line,
-    ) && !/\.\w+\s*\(/.test(line)
-  );
+  if (/\.\w+\s*\(/.test(line)) return false;
+  let s = line.trimStart();
+  while (s.startsWith("@")) {
+    const nextSpace = s.indexOf(" ");
+    if (nextSpace < 0) return false;
+    s = s.slice(nextSpace + 1).trimStart();
+  }
+  for (const mod of ["public", "private", "protected", "internal", "open", "static", "final"]) {
+    if (s.startsWith(`${mod} `)) {
+      s = s.slice(mod.length + 1);
+    }
+  }
+  return /^(?:void|func)\s+\w+\s*\(/.test(s);
 }
 
 /** @param {string} filePath @param {{ exts: string[], pattern: RegExp, ignoreLine?: RegExp }} rule @returns {{ line: number, text: string }[]} */
