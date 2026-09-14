@@ -90,6 +90,7 @@ const RULES = [
 const CORDova_SPM_LINE =
   /\.product\s*\(\s*name\s*:\s*"Cordova"\s*,\s*package\s*:\s*"capacitor-swift-pm"\s*\)/;
 
+/** @param {string} pluginDir @param {object} cap @returns {string[]} */
 function collectScanRoots(pluginDir, cap) {
   const roots = [];
   if (cap.android) {
@@ -109,6 +110,7 @@ function collectScanRoots(pluginDir, cap) {
   return roots;
 }
 
+/** @param {string} filePath @param {{ exts: string[], pattern: RegExp, ignoreLine?: RegExp }} rule @returns {{ line: number, text: string }[]} */
 function scanFile(filePath, rule) {
   const ext = path.extname(filePath);
   if (!rule.exts.includes(ext)) return [];
