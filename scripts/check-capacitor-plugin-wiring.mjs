@@ -15,67 +15,15 @@
  *   node scripts/check-capacitor-plugin-wiring.mjs --dir path # checks given plugin dir
  */
 
-import fs from "node:fs";
 import path from "node:path";
-
-const SKIP_DIRS = new Set([
-  "node_modules",
-  "dist",
-  "build",
-  ".build",
-  ".gradle",
-  "Pods",
-  "DerivedData",
-  ".swiftpm",
-  ".git",
-]);
-
-function readText(p) {
-  try {
-    return fs.readFileSync(p, "utf8");
-  } catch {
-    return "";
-  }
-}
-
-function exists(p) {
-  try {
-    fs.accessSync(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function walkFiles(rootDir, exts) {
-  const out = [];
-  const stack = [rootDir];
-  while (stack.length) {
-    const dir = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const e of entries) {
-      if (e.isDirectory()) {
-        if (SKIP_DIRS.has(e.name)) continue;
-        stack.push(path.join(dir, e.name));
-        continue;
-      }
-      if (!e.isFile()) continue;
-      for (const ext of exts) {
-        if (e.name.endsWith(ext)) {
-          out.push(path.join(dir, e.name));
-          break;
-        }
-      }
-    }
-  }
-  out.sort();
-  return out;
-}
+import {
+  exists,
+  listRootFiles,
+  loadCapacitorPluginContext,
+  parseArgs,
+  readText,
+  walkFiles,
+} from "./capacitor-plugin-check-utils.mjs";
 
 function uniq(arr) {
   const out = [];
@@ -86,36 +34,20 @@ function uniq(arr) {
   return out;
 }
 
-function parseArgs(argv) {
-  const out = { dir: process.cwd() };
-  for (let i = 2; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--dir" || a === "--pluginDir") {
-      out.dir = path.resolve(argv[++i] || ".");
-      continue;
-    }
-  }
-  return out;
-}
-
-const args = parseArgs(process.argv);
-const pluginDir = args.dir;
-const pkgPath = path.join(pluginDir, "package.json");
-
-if (!exists(pkgPath)) {
-  console.error(`[wiring] ERROR: missing package.json in ${pluginDir}`);
-  process.exit(2);
-}
-
-let pkg;
+let pluginDir;
 try {
-  pkg = JSON.parse(readText(pkgPath));
+  pluginDir = parseArgs(process.argv).dir;
 } catch (e) {
-  console.error(`[wiring] ERROR: invalid package.json (${pkgPath}): ${e?.message || e}`);
+  console.error(e instanceof Error ? e.message : e);
   process.exit(2);
 }
-
-const cap = typeof pkg.capacitor === "object" && pkg.capacitor ? pkg.capacitor : {};
+let cap;
+try {
+  ({ cap } = loadCapacitorPluginContext(pluginDir, "wiring"));
+} catch (e) {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(2);
+}
 const supportsAndroid = typeof cap.android === "object" && cap.android;
 const supportsIos = typeof cap.ios === "object" && cap.ios;
 
@@ -219,11 +151,7 @@ if (supportsIos) {
     errors.push(`iOS: jsName=${JSON.stringify(iosJsNames)} != JS registerPlugin=${jsName}`);
   }
 
-  const podspecs = fs
-    .readdirSync(pluginDir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".podspec"))
-    .map((e) => path.join(pluginDir, e.name))
-    .sort();
+  const podspecs = listRootFiles(pluginDir, ".podspec");
   if (!podspecs.length) errors.push("iOS: missing *.podspec at plugin root");
   if (podspecs.length > 1) errors.push(`iOS: multiple podspecs at plugin root: ${podspecs.map((p) => path.basename(p))}`);
 
