@@ -94,20 +94,43 @@ const CORDova_SPM_LINE =
 function collectScanRoots(pluginDir, cap) {
   const roots = [];
   if (cap.android) {
-    const androidMain = path.join(pluginDir, "android", "src", "main");
-    if (exists(androidMain)) roots.push(androidMain);
+    const androidRoot =
+      typeof cap.android === "object" && typeof cap.android.src === "string"
+        ? path.resolve(pluginDir, cap.android.src)
+        : path.join(pluginDir, "android");
+    if (exists(androidRoot)) roots.push(androidRoot);
   }
   if (cap.ios) {
-    const iosSources = path.join(pluginDir, "ios", "Sources");
-    if (exists(iosSources)) roots.push(iosSources);
-    else {
-      const iosDir = path.join(pluginDir, "ios");
-      if (exists(iosDir)) roots.push(iosDir);
-    }
+    const iosRoot =
+      typeof cap.ios === "object" && typeof cap.ios.src === "string"
+        ? path.resolve(pluginDir, cap.ios.src)
+        : path.join(pluginDir, "ios");
+    if (exists(iosRoot)) roots.push(iosRoot);
   }
   const packageSwift = path.join(pluginDir, "Package.swift");
   if (exists(packageSwift)) roots.push(packageSwift);
   return roots;
+}
+
+/** @param {string} line @param {string} ext @returns {string} */
+function stripCommentsAndLiterals(line, ext) {
+  let out = line;
+  if (ext === ".java" || ext === ".kt" || ext === ".swift") {
+    const slash = out.indexOf("//");
+    if (slash >= 0) out = out.slice(0, slash);
+  }
+  out = out.replace(/"(?:\\.|[^"\\])*"/g, '""');
+  out = out.replace(/'(?:\\.|[^'\\])*'/g, "''");
+  return out;
+}
+
+/** @param {string} line @returns {boolean} */
+function isDeprecatedApiDeclaration(line) {
+  return (
+    /^\s*(?:@\w+\s*)*(?:public|private|protected|internal|open|static|final|\s)*\b(?:void|func)\s+\w+\s*\(/.test(
+      line,
+    ) && !/\.\w+\s*\(/.test(line)
+  );
 }
 
 /** @param {string} filePath @param {{ exts: string[], pattern: RegExp, ignoreLine?: RegExp }} rule @returns {{ line: number, text: string }[]} */
@@ -124,7 +147,9 @@ function scanFile(filePath, rule) {
       continue;
     }
     if (rule.ignoreLine?.test(line)) continue;
-    if (rule.pattern.test(line)) {
+    const scanLine = stripCommentsAndLiterals(line, ext);
+    if (isDeprecatedApiDeclaration(scanLine)) continue;
+    if (rule.pattern.test(scanLine)) {
       hits.push({ line: i + 1, text: line.trim() });
     }
   }
