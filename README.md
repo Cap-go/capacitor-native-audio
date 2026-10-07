@@ -1,11 +1,28 @@
 # Native audio
 
-<a href="https://capgo.app/"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-native-audio" alt="Capgo - Instant updates for Capacitor" /></a>
+Play sound effects, music and streams with native audio engines in your Capacitor app: low latency playback, background audio, lock screen controls and HLS streams on iOS and Android.
+
+<a href="https://capgo.app/?ref=plugin_native_audio"><img src="https://capgo.app/readme-banner.svg?repo=Cap-go/capacitor-native-audio" alt="Capgo - Instant updates for Capacitor" /></a>
 
 <div align="center">
-  <h2><a href="https://capgo.app/?ref=plugin_native_audio"> ➡️ Get Instant updates for your App with Capgo</a></h2>
-  <h2><a href="https://capgo.app/consulting/?ref=plugin_native_audio"> Missing a feature? We’ll build the plugin for you 💪</a></h2>
+  <p><b>Capgo</b>: open-source live updates for Ionic and Capacitor apps. Ship OTA fixes and features instantly, without waiting for app store review.</p>
+  <h2><a href="https://capgo.app/register/?ref=plugin_native_audio">➡️ Get started for free</a></h2>
+  <p>14-day unlimited free trial. No credit card required</p>
+  <p><a href="https://capgo.app/consulting/?ref=plugin_native_audio">Missing a feature? We'll build the plugin for you 💪</a></p>
 </div>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Cap-go/capacitor-native-audio/main/assets/github-social-preview.png" alt="@capgo/capacitor-native-audio for Capacitor apps" width="300" />
+</p>
+
+## Key features
+
+- **Preload and play**: `preload()`, `play()`, `playOnce()`, `pause()`, `resume()`, `loop()` and `stop()`.
+- **Sources**: local files, `file://` paths, remote `https://` URLs and M3U8 HLS streams.
+- **Controls**: `setVolume()`, `setRate()`, `setCurrentTime()`, `getCurrentTime()` and `getDuration()`.
+- **Background and focus**: `configure()` sets audio focus, background playback and Now Playing controls.
+- **Events**: `complete`, `currentTime` and `playbackState` listeners.
+- **Platforms**: iOS, Android and Web. iOS uses AVFoundation, Android uses Media3 ExoPlayer. Web supports most playback calls.
 
 <h3 align="center">Native Audio</h3>
 <p align="center">
