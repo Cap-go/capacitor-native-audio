@@ -20,9 +20,9 @@ Play sound effects, music and streams with native audio engines in your Capacito
 - **Preload and play**: `preload()`, `play()`, `playOnce()`, `pause()`, `resume()`, `loop()` and `stop()`.
 - **Sources**: local files, `file://` paths, remote `https://` URLs and M3U8 HLS streams.
 - **Controls**: `setVolume()`, `setRate()`, `setCurrentTime()`, `getCurrentTime()` and `getDuration()`.
-- **Background and focus**: `configure()` sets audio focus, background playback and Now Playing controls.
-- **Events**: `complete`, `currentTime` and `playbackState` listeners.
-- **Platforms**: iOS, Android and Web. iOS uses AVFoundation, Android uses Media3 ExoPlayer. Web supports most playback calls.
+- **Background and focus**: `configure()` sets audio focus, background playback and Now Playing controls on iOS and Android.
+- **Events**: `complete` and `currentTime` listeners, plus `playbackState` on iOS and Android.
+- **Platforms**: iOS, Android and Web. iOS uses AVFoundation, Android uses Media3 ExoPlayer. Web supports most playback calls, but not `configure()` or the `playbackState` event.
 
 <h3 align="center">Native Audio</h3>
 <p align="center">
