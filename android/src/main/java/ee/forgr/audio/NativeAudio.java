@@ -34,6 +34,7 @@ import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.ImageDecoder;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
@@ -45,6 +46,7 @@ import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
 import android.util.Log;
+import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.media3.common.util.UnstableApi;
@@ -54,12 +56,17 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
+import java.net.URLConnection;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -107,6 +114,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private static final int NOTIFICATION_ID = 1001;
     private static final String CHANNEL_ID = "native_audio_channel";
     private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 512;
+    private static final int ARTWORK_CONNECT_TIMEOUT_MS = 10000;
+    private static final int ARTWORK_READ_TIMEOUT_MS = 15000;
+    private static final int MAX_ARTWORK_DOWNLOAD_BYTES = 20 * 1024 * 1024;
     private static final double NOTIFICATION_SKIP_SECONDS = 15.0;
 
     // Track playOnce assets for automatic cleanup
@@ -1962,41 +1972,23 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 Uri uri = Uri.parse(urlString);
                 Bitmap bitmap = null;
 
-                // Configure BitmapFactory options to decode at full resolution
-                BitmapFactory.Options options = new BitmapFactory.Options();
-                options.inScaled = false; // Disable density-based scaling
-                options.inPreferredConfig = Bitmap.Config.ARGB_8888; // Use high quality format
-
                 if (uri.getScheme() == null || uri.getScheme().equals("file")) {
                     // Local file
                     File file = new File(uri.getPath());
                     if (file.exists()) {
-                        bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+                        bitmap = decodeArtworkFile(file);
                     }
                 } else {
-                    // Remote URL
-                    URL url = new URL(urlString);
-                    bitmap = BitmapFactory.decodeStream(url.openConnection().getInputStream(), null, options);
-                }
-
-                // Resize to optimal notification size if the bitmap is too large
-                // Android notifications typically display artwork at around 128-256dp
-                // We target 512px as a good balance between quality and memory usage
-                if (bitmap != null && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
-                    if (bitmap.getWidth() > MAX_NOTIFICATION_ARTWORK_SIZE || bitmap.getHeight() > MAX_NOTIFICATION_ARTWORK_SIZE) {
-                        float scale = Math.min(
-                            (float) MAX_NOTIFICATION_ARTWORK_SIZE / bitmap.getWidth(),
-                            (float) MAX_NOTIFICATION_ARTWORK_SIZE / bitmap.getHeight()
-                        );
-                        int newWidth = Math.round(bitmap.getWidth() * scale);
-                        int newHeight = Math.round(bitmap.getHeight() * scale);
-                        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
-                        if (scaledBitmap != null) {
-                            bitmap.recycle(); // Free memory from original bitmap
-                            bitmap = scaledBitmap;
-                        }
+                    // Remote URL: read the bytes once so bounds and pixels can be decoded from the same buffer
+                    byte[] data = downloadArtwork(urlString);
+                    if (data != null && data.length > 0) {
+                        bitmap = decodeArtworkBytes(data);
                     }
                 }
+
+                // Downsampling only reduces by powers of two, so finish with an exact scale to fit
+                // the notification artwork bounds (512px gives a good balance between quality and memory)
+                bitmap = scaleArtworkToFit(bitmap);
 
                 Bitmap finalBitmap = bitmap;
                 new Handler(Looper.getMainLooper()).post(() -> callback.onArtworkLoaded(finalBitmap));
@@ -2006,6 +1998,125 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             }
         })
             .start();
+    }
+
+    private Bitmap decodeArtworkFile(File file) throws IOException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return decodeArtworkWithImageDecoder(ImageDecoder.createSource(file));
+        }
+
+        BitmapFactory.Options boundsOptions = new BitmapFactory.Options();
+        boundsOptions.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), boundsOptions);
+        if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
+            return null;
+        }
+
+        BitmapFactory.Options options = createArtworkDecodeOptions(boundsOptions.outWidth, boundsOptions.outHeight);
+        return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+    }
+
+    private Bitmap decodeArtworkBytes(byte[] data) throws IOException {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return decodeArtworkWithImageDecoder(ImageDecoder.createSource(ByteBuffer.wrap(data)));
+        }
+
+        BitmapFactory.Options boundsOptions = new BitmapFactory.Options();
+        boundsOptions.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(data, 0, data.length, boundsOptions);
+        if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) {
+            return null;
+        }
+
+        BitmapFactory.Options options = createArtworkDecodeOptions(boundsOptions.outWidth, boundsOptions.outHeight);
+        return BitmapFactory.decodeByteArray(data, 0, data.length, options);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.P)
+    private Bitmap decodeArtworkWithImageDecoder(ImageDecoder.Source source) throws IOException {
+        return ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
+            // Software bitmaps can be parceled into the media session and notification
+            decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+            int width = info.getSize().getWidth();
+            int height = info.getSize().getHeight();
+            if (width > MAX_NOTIFICATION_ARTWORK_SIZE || height > MAX_NOTIFICATION_ARTWORK_SIZE) {
+                float scale = Math.min((float) MAX_NOTIFICATION_ARTWORK_SIZE / width, (float) MAX_NOTIFICATION_ARTWORK_SIZE / height);
+                decoder.setTargetSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+            }
+        });
+    }
+
+    private BitmapFactory.Options createArtworkDecodeOptions(int width, int height) {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inScaled = false; // Disable density-based scaling
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        options.inSampleSize = calculateArtworkSampleSize(width, height);
+        return options;
+    }
+
+    private static int calculateArtworkSampleSize(int width, int height) {
+        int sampleSize = 1;
+        // Largest power of two that keeps both dimensions >= the target size
+        while (width / (sampleSize * 2) >= MAX_NOTIFICATION_ARTWORK_SIZE && height / (sampleSize * 2) >= MAX_NOTIFICATION_ARTWORK_SIZE) {
+            sampleSize *= 2;
+        }
+        return sampleSize;
+    }
+
+    private byte[] downloadArtwork(String urlString) throws IOException {
+        URLConnection connection = new URL(urlString).openConnection();
+        connection.setConnectTimeout(ARTWORK_CONNECT_TIMEOUT_MS);
+        connection.setReadTimeout(ARTWORK_READ_TIMEOUT_MS);
+        try {
+            if (connection instanceof HttpURLConnection) {
+                int responseCode = ((HttpURLConnection) connection).getResponseCode();
+                if (responseCode < 200 || responseCode >= 300) {
+                    Log.w(TAG, "Artwork request failed with HTTP " + responseCode);
+                    return null;
+                }
+            }
+
+            try (InputStream inputStream = connection.getInputStream(); ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[16 * 1024];
+                int totalBytes = 0;
+                int read;
+                while ((read = inputStream.read(buffer)) != -1) {
+                    totalBytes += read;
+                    if (totalBytes > MAX_ARTWORK_DOWNLOAD_BYTES) {
+                        Log.w(TAG, "Artwork exceeds " + MAX_ARTWORK_DOWNLOAD_BYTES + " bytes, skipping");
+                        return null;
+                    }
+                    outputStream.write(buffer, 0, read);
+                }
+                return outputStream.toByteArray();
+            }
+        } finally {
+            if (connection instanceof HttpURLConnection) {
+                ((HttpURLConnection) connection).disconnect();
+            }
+        }
+    }
+
+    private static Bitmap scaleArtworkToFit(Bitmap bitmap) {
+        if (bitmap == null || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) {
+            return bitmap;
+        }
+        if (bitmap.getWidth() <= MAX_NOTIFICATION_ARTWORK_SIZE && bitmap.getHeight() <= MAX_NOTIFICATION_ARTWORK_SIZE) {
+            return bitmap;
+        }
+
+        float scale = Math.min(
+            (float) MAX_NOTIFICATION_ARTWORK_SIZE / bitmap.getWidth(),
+            (float) MAX_NOTIFICATION_ARTWORK_SIZE / bitmap.getHeight()
+        );
+        int newWidth = Math.max(1, Math.round(bitmap.getWidth() * scale));
+        int newHeight = Math.max(1, Math.round(bitmap.getHeight() * scale));
+        Bitmap scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+        if (scaledBitmap != null && scaledBitmap != bitmap) {
+            bitmap.recycle(); // Free memory from the larger decoded bitmap
+            return scaledBitmap;
+        }
+        return bitmap;
     }
 
     interface ArtworkCallback {
