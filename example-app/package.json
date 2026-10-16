@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@capacitor/core": "^8.5.2",
+    "@capacitor/splash-screen": "^8.0.2",
     "@capgo/capacitor-native-audio": "..",
     "@capgo/capacitor-updater": "^8.45.11",
     "react": "^18.3.1",
