@@ -21,6 +21,9 @@ public class ExampleUnitTest {
     }
 
     private static void assertNoImageDecoderType(Class<?> type, String context) {
+        while (type.isArray()) {
+            type = type.getComponentType();
+        }
         assertFalse(
             context + " must not reference ImageDecoder (Capacitor reflects plugin methods at startup on API < 28)",
             type.getName().startsWith(IMAGE_DECODER_CLASS_PREFIX)
