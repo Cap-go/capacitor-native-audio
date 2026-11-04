@@ -2002,7 +2002,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     private Bitmap decodeArtworkFile(File file) throws IOException {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            return decodeArtworkWithImageDecoder(ImageDecoder.createSource(file));
+            return ArtworkImageDecoder.decodeFile(file);
         }
 
         BitmapFactory.Options boundsOptions = new BitmapFactory.Options();
@@ -2018,7 +2018,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     private Bitmap decodeArtworkBytes(byte[] data) throws IOException {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            return decodeArtworkWithImageDecoder(ImageDecoder.createSource(ByteBuffer.wrap(data)));
+            return ArtworkImageDecoder.decodeBytes(data);
         }
 
         BitmapFactory.Options boundsOptions = new BitmapFactory.Options();
@@ -2032,18 +2032,37 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         return BitmapFactory.decodeByteArray(data, 0, data.length, options);
     }
 
+    /**
+     * ImageDecoder (API 28) must stay out of this plugin class's method signatures. Capacitor
+     * calls getDeclaredMethods() on every plugin at startup, and on API < 28 ART resolves each
+     * declared method's parameter types, so a method (or lambda) taking an ImageDecoder type
+     * throws NoClassDefFoundError before any SDK_INT guard runs.
+     */
     @RequiresApi(api = Build.VERSION_CODES.P)
-    private Bitmap decodeArtworkWithImageDecoder(ImageDecoder.Source source) throws IOException {
-        return ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
-            // Software bitmaps can be parceled into the media session and notification
-            decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
-            int width = info.getSize().getWidth();
-            int height = info.getSize().getHeight();
-            if (width > MAX_NOTIFICATION_ARTWORK_SIZE || height > MAX_NOTIFICATION_ARTWORK_SIZE) {
-                float scale = Math.min((float) MAX_NOTIFICATION_ARTWORK_SIZE / width, (float) MAX_NOTIFICATION_ARTWORK_SIZE / height);
-                decoder.setTargetSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
-            }
-        });
+    private static final class ArtworkImageDecoder {
+
+        private ArtworkImageDecoder() {}
+
+        static Bitmap decodeFile(File file) throws IOException {
+            return decode(ImageDecoder.createSource(file));
+        }
+
+        static Bitmap decodeBytes(byte[] data) throws IOException {
+            return decode(ImageDecoder.createSource(ByteBuffer.wrap(data)));
+        }
+
+        private static Bitmap decode(ImageDecoder.Source source) throws IOException {
+            return ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
+                // Software bitmaps can be parceled into the media session and notification
+                decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                int width = info.getSize().getWidth();
+                int height = info.getSize().getHeight();
+                if (width > MAX_NOTIFICATION_ARTWORK_SIZE || height > MAX_NOTIFICATION_ARTWORK_SIZE) {
+                    float scale = Math.min((float) MAX_NOTIFICATION_ARTWORK_SIZE / width, (float) MAX_NOTIFICATION_ARTWORK_SIZE / height);
+                    decoder.setTargetSize(Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)));
+                }
+            });
+        }
     }
 
     private BitmapFactory.Options createArtworkDecodeOptions(int width, int height) {
