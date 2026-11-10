@@ -515,9 +515,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
         logger.info("Configuring audio session with focus=%@ background=%@ ignoreSilent=%@", "\(focus)", "\(background)", "\(ignoreSilent)")
 
-        // Use a single audio session configuration block for better atomicity
         do {
             try restoreRouteControlSessionIfNeeded()
+        } catch {
+            logger.error("Failed to restore route-control session before configure: %@", error.localizedDescription)
+        }
+
+        do {
             // Set category first
             // Fix for issue #202: When showNotification is enabled, use .playback without
             // .mixWithOthers or .duckOthers to allow Now Playing info to display in

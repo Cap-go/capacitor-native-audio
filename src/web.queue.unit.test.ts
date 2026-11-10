@@ -129,6 +129,7 @@ describe('NativeAudio web queue and playback state', () => {
     window.addEventListener('unhandledrejection', onUnhandled);
 
     await expect(NativeAudio.queueNext()).rejects.toBeDefined();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     window.removeEventListener('unhandledrejection', onUnhandled);
     expect(unhandled).toHaveLength(0);
   }, 10000);
