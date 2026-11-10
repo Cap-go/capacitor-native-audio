@@ -1571,6 +1571,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 originalAudioMode = AudioManager.MODE_INVALID;
             }
 
+            playbackQueueItems.clear();
+            playbackQueueIndex = -1;
+            refreshQueueMediaSessionActions();
+
             call.resolve();
         } catch (Exception e) {
             Log.e(TAG, "Error in deinitPlugin", e);
@@ -1595,16 +1599,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
         mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
 
-        PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder().setActions(
-            PlaybackStateCompat.ACTION_PLAY |
-                PlaybackStateCompat.ACTION_PAUSE |
-                PlaybackStateCompat.ACTION_STOP |
-                PlaybackStateCompat.ACTION_REWIND |
-                PlaybackStateCompat.ACTION_FAST_FORWARD |
-                PlaybackStateCompat.ACTION_SEEK_TO |
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-        );
+        PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder().setActions(buildMediaSessionActions());
         mediaSession.setPlaybackState(stateBuilder.build());
 
         // Set callback for media button events
@@ -1842,15 +1837,31 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         long positionMs = getPlaybackPositionMs(asset);
         PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
             .setState(state, positionMs, state == PlaybackStateCompat.STATE_PLAYING ? 1.0f : 0.0f, SystemClock.elapsedRealtime())
-            .setActions(
-                PlaybackStateCompat.ACTION_PLAY |
-                    PlaybackStateCompat.ACTION_PAUSE |
-                    PlaybackStateCompat.ACTION_STOP |
-                    PlaybackStateCompat.ACTION_REWIND |
-                    PlaybackStateCompat.ACTION_FAST_FORWARD |
-                    PlaybackStateCompat.ACTION_SEEK_TO
-            );
+            .setActions(buildMediaSessionActions());
         mediaSession.setPlaybackState(stateBuilder.build());
+    }
+
+    private long buildMediaSessionActions() {
+        long actions =
+            PlaybackStateCompat.ACTION_PLAY |
+            PlaybackStateCompat.ACTION_PAUSE |
+            PlaybackStateCompat.ACTION_STOP |
+            PlaybackStateCompat.ACTION_REWIND |
+            PlaybackStateCompat.ACTION_FAST_FORWARD |
+            PlaybackStateCompat.ACTION_SEEK_TO;
+        if (showNotification && playbackQueueItems.size() > 1) {
+            actions |= PlaybackStateCompat.ACTION_SKIP_TO_NEXT | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+        }
+        return actions;
+    }
+
+    private void refreshQueueMediaSessionActions() {
+        if (mediaSession == null) {
+            return;
+        }
+        AudioAsset asset = getCurrentPlaybackAsset();
+        int state = resolvePlaybackState(currentlyPlayingAssetId, asset);
+        updatePlaybackState(state, asset);
     }
 
     private void syncCurrentPlaybackState(String reason) {
@@ -2206,12 +2217,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
         try {
             AudioAsset asset = audioAssetList.get(audioId);
-            boolean playing = asset.isPlaying();
+            int playbackState = resolvePlaybackState(audioId, asset);
             JSObject ret = new JSObject();
             ret.put("assetId", audioId);
-            ret.put("state", playing ? "playing" : "paused");
+            ret.put("state", playbackStateLabel(playbackState));
             ret.put("reason", "snapshot");
-            ret.put("isPlaying", playing);
+            ret.put("isPlaying", playbackState == PlaybackStateCompat.STATE_PLAYING);
             ret.put("currentTime", asset.getCurrentPosition());
             ret.put("duration", asset.getDuration());
             call.resolve(ret);
@@ -2248,44 +2259,43 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         final int startIndex = Math.max(0, call.getInt("startIndex", 0));
         final boolean autoPlay = Boolean.TRUE.equals(call.getBoolean("autoPlay", false));
 
-        new Thread(() -> {
-            try {
-                playbackQueueItems.clear();
-                for (int i = 0; i < items.length(); i++) {
-                    JSObject item = JSObject.fromJSONObject(items.getJSONObject(i));
-                    if (item != null && queueItemIsValid(item.getString(ASSET_ID), item.getString(ASSET_PATH))) {
-                        playbackQueueItems.add(item);
-                    }
+        try {
+            playbackQueueItems.clear();
+            for (int i = 0; i < items.length(); i++) {
+                JSObject item = JSObject.fromJSONObject(items.getJSONObject(i));
+                if (item != null && queueItemIsValid(item.getString(ASSET_ID), item.getString(ASSET_PATH))) {
+                    playbackQueueItems.add(item);
                 }
-
-                if (playbackQueueItems.isEmpty()) {
-                    call.reject("No valid queue items");
-                    return;
-                }
-
-                int cappedStart = Math.min(startIndex, playbackQueueItems.size() - 1);
-                JSObject current = playbackQueueItems.get(cappedStart);
-                preloadQueueItem(current);
-
-                playbackQueueIndex = cappedStart;
-                String assetId = current.getString(ASSET_ID);
-                if (autoPlay) {
-                    playQueueAsset(assetId, "setQueue");
-                } else {
-                    notifyQueueChange(assetId, playbackQueueIndex, "setQueue");
-                }
-                call.resolve(buildQueueState());
-            } catch (Exception e) {
-                call.reject("Failed to set queue: " + e.getMessage());
             }
-        })
-            .start();
+
+            if (playbackQueueItems.isEmpty()) {
+                call.reject("No valid queue items");
+                return;
+            }
+
+            int cappedStart = Math.min(startIndex, playbackQueueItems.size() - 1);
+            JSObject current = playbackQueueItems.get(cappedStart);
+            preloadQueueItem(current);
+
+            playbackQueueIndex = cappedStart;
+            refreshQueueMediaSessionActions();
+            String assetId = current.getString(ASSET_ID);
+            if (autoPlay) {
+                playQueueAsset(assetId, "setQueue");
+            } else {
+                notifyQueueChange(assetId, playbackQueueIndex, "setQueue");
+            }
+            call.resolve(buildQueueState());
+        } catch (Exception e) {
+            call.reject("Failed to set queue: " + e.getMessage());
+        }
     }
 
     @PluginMethod
     public void clearQueue(PluginCall call) {
         playbackQueueItems.clear();
         playbackQueueIndex = -1;
+        refreshQueueMediaSessionActions();
         call.resolve();
     }
 
@@ -2481,7 +2491,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         if (audioManager.isSpeakerphoneOn()) {
             return "speaker";
         }
-        return "earpiece";
+        if (audioManager.getMode() == AudioManager.MODE_IN_COMMUNICATION) {
+            return "earpiece";
+        }
+        return "speaker";
     }
 
     private void notifyAudioRouteChange(String route) {

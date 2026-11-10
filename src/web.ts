@@ -62,6 +62,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private lastProgressEmitByAsset: Map<string, number> = new Map<string, number>();
   private progressIntervalSec = DEFAULT_PROGRESS_INTERVAL_SEC;
   private activeAssetId: string | null = null;
+  private snapshotPlaybackStateByAsset = new Map<string, PlaybackStateValue>();
   private playbackQueue: QueueItem[] = [];
   private playbackQueueIndex = -1;
   private readonly zeroVolume = 0.0001;
@@ -550,7 +551,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     const audio = this.getAudioAsset(assetId).audio;
     const isPlaying = !audio.paused && !audio.ended;
-    const state = this.resolvePlaybackStateValue(audio, isPlaying);
+    const tracked = this.snapshotPlaybackStateByAsset.get(assetId);
+    const state = tracked ?? this.resolvePlaybackStateValue(audio, isPlaying);
     let duration = 0;
     if (Number.isFinite(audio.duration)) {
       duration = audio.duration;
@@ -583,6 +585,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     if (options.autoPlay) {
       await this.play({ assetId: item.assetId, time: 0 });
+      this.notifyQueueChange(item.assetId, startIndex, 'setQueue');
     } else {
       this.notifyQueueChange(item.assetId, startIndex, 'setQueue');
     }
@@ -624,7 +627,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   }
 
   async setEarpiece(): Promise<void> {
-    this.notifyAudioRouteChange('speaker');
+    this.notifyAudioRouteChange('earpiece');
   }
 
   async getAudioRoute(): Promise<{ route: AudioRouteValue }> {
@@ -812,6 +815,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       await this.unload({ assetId });
     }
     this.stopCurrentTimeUpdates();
+    this.snapshotPlaybackStateByAsset.clear();
     await this.clearQueue();
   }
 
@@ -830,6 +834,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   ): void {
     const audio = this.getAudioAsset(assetId).audio;
     const state = forcedState ?? this.resolvePlaybackStateValue(audio, isPlaying);
+    this.snapshotPlaybackStateByAsset.set(assetId, state);
     const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
     this.notifyListeners('playbackState', {
       assetId,
@@ -866,13 +871,13 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private async selectQueueIndex(index: number, reason: string): Promise<QueueState> {
     const item = this.playbackQueue[index];
     const previousId = this.getCurrentQueueAssetId();
+    this.playbackQueueIndex = index;
     if (previousId && previousId !== item.assetId && NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(previousId)) {
       await this.stop({ assetId: previousId });
     }
     if (!NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(item.assetId)) {
       await this.preload(item);
     }
-    this.playbackQueueIndex = index;
     await this.play({ assetId: item.assetId, time: 0 });
     this.notifyQueueChange(item.assetId, index, reason);
     return this.buildQueueState();

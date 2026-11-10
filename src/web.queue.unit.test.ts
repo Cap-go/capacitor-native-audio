@@ -117,6 +117,64 @@ describe('NativeAudio web queue and playback state', () => {
     await expect(NativeAudio.queueNext()).rejects.toBeDefined();
   }, 10000);
 
+  it('setQueue_autoPlay_emitsQueueChangeWithSetQueueReason', async () => {
+    const first = blobAudioUrl();
+    const second = blobAudioUrl();
+    const queueChanges: { assetId: string; index: number; reason: string }[] = [];
+    const handle = await NativeAudio.addListener('queueChange', (event) => {
+      queueChanges.push({
+        assetId: event.assetId,
+        index: event.index,
+        reason: event.reason,
+      });
+    });
+
+    await NativeAudio.setQueue({
+      items: [
+        { assetId: 'qa1', assetPath: first, isUrl: true },
+        { assetId: 'qa2', assetPath: second, isUrl: true },
+      ],
+      startIndex: 0,
+      autoPlay: true,
+    });
+
+    expect(queueChanges.some((event) => event.reason === 'setQueue' && event.assetId === 'qa1')).toBe(true);
+    await handle.remove();
+  }, 10000);
+
+  it('queueNext_withAutoAdvanceCompleteListener_advancesOnce', async () => {
+    const first = blobAudioUrl();
+    const second = blobAudioUrl();
+
+    await NativeAudio.setQueue({
+      items: [
+        { assetId: 'adv1', assetPath: first, isUrl: true },
+        { assetId: 'adv2', assetPath: second, isUrl: true },
+      ],
+      startIndex: 0,
+      autoPlay: false,
+    });
+
+    await NativeAudio.play({ assetId: 'adv1', time: 0 });
+
+    let autoAdvanceCalls = 0;
+    const completeHandle = await NativeAudio.addListener('complete', async ({ assetId }) => {
+      const { assetId: selectedId } = await NativeAudio.getQueueState();
+      if (assetId === selectedId) {
+        autoAdvanceCalls += 1;
+        await NativeAudio.queueNext();
+      }
+    });
+
+    await NativeAudio.queueNext();
+
+    const state = await NativeAudio.getQueueState();
+    expect(state.index).toBe(1);
+    expect(state.assetId).toBe('adv2');
+    expect(autoAdvanceCalls).toBe(0);
+    await completeHandle.remove();
+  }, 10000);
+
   it('queueNext_atBoundaryRejectsWithoutUnhandledRejection', async () => {
     const url = blobAudioUrl();
     await NativeAudio.setQueue({

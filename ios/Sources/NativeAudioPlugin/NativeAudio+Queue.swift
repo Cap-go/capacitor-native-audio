@@ -63,7 +63,7 @@ extension NativeAudio {
     }
 
     @objc func getQueueState(_ call: CAPPluginCall) {
-        call.resolve(buildQueueStateDictionary())
+        call.resolve(readOnAudioQueue { self.buildQueueStateDictionary() })
     }
 
     @objc func queueNext(_ call: CAPPluginCall) {
@@ -109,8 +109,8 @@ extension NativeAudio {
                 return
             }
 
-            let isPlaying = asset.isPlaying()
-            let state: PlaybackStateValue = isPlaying ? .playing : .paused
+            let state = self.resolvePlaybackState(assetId: assetId, audioAsset: asset)
+            let isPlaying = state == .playing
             call.resolve([
                 "assetId": assetId,
                 "state": state.rawValue,
@@ -269,12 +269,15 @@ extension NativeAudio {
             max(item["volume"] as? Float ?? Constant.DefaultVolume, Constant.MinVolume),
             Constant.MaxVolume
         )
+        let rawChannels = item["audioChannelNum"] as? Int ?? Constant.DefaultChannels
+        let audioChannelNum = min(max(rawChannels, 1), Constant.MaxChannels)
 
         preloadQueueItem(
             assetId: assetId,
             assetPath: assetPath,
             isUrl: isUrl,
             volume: volume,
+            audioChannelNum: audioChannelNum,
             item: item,
             completion: completion
         )
@@ -285,6 +288,7 @@ extension NativeAudio {
         assetPath: String,
         isUrl: Bool,
         volume: Float,
+        audioChannelNum: Int,
         item: [String: Any],
         completion: @escaping (Bool) -> Void
     ) {
@@ -321,7 +325,7 @@ extension NativeAudio {
                     owner: self,
                     withAssetId: assetId,
                     withPath: url.path,
-                    withChannels: Constant.DefaultChannels,
+                    withChannels: audioChannelNum,
                     withVolume: volume
                 )
                 audioList[assetId] = audioAsset
@@ -333,7 +337,7 @@ extension NativeAudio {
                 owner: self,
                 withAssetId: assetId,
                 withPath: assetPath,
-                withChannels: Constant.DefaultChannels,
+                withChannels: audioChannelNum,
                 withVolume: volume,
                 withHeaders: headers
             )
@@ -349,7 +353,7 @@ extension NativeAudio {
                     owner: self,
                     withAssetId: assetId,
                     withPath: filePath,
-                    withChannels: Constant.DefaultChannels,
+                    withChannels: audioChannelNum,
                     withVolume: volume
                 )
                 audioList[assetId] = audioAsset
@@ -372,7 +376,7 @@ extension NativeAudio {
             owner: self,
             withAssetId: assetId,
             withPath: basePath,
-            withChannels: Constant.DefaultChannels,
+            withChannels: audioChannelNum,
             withVolume: volume
         )
         audioList[assetId] = audioAsset

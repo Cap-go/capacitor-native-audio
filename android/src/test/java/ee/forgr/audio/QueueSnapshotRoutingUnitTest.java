@@ -50,4 +50,36 @@ public class QueueSnapshotRoutingUnitTest {
         resolveAudioRoute.setAccessible(true);
         assertEquals("speaker", resolveAudioRoute.invoke(plugin));
     }
+
+    @Test
+    public void resolveAudioRoute_reportsSpeakerByDefaultWithoutSpeakerphone() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        NativeAudio plugin = new NativeAudio();
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        Field audioManagerField = NativeAudio.class.getDeclaredField("audioManager");
+        audioManagerField.setAccessible(true);
+        audioManagerField.set(plugin, audioManager);
+
+        audioManager.setSpeakerphoneOn(false);
+        audioManager.setMode(AudioManager.MODE_NORMAL);
+        Method resolveAudioRoute = NativeAudio.class.getDeclaredMethod("resolveAudioRoute");
+        resolveAudioRoute.setAccessible(true);
+        assertEquals("speaker", resolveAudioRoute.invoke(plugin));
+    }
+
+    @Test
+    public void resolveAudioRoute_reportsEarpieceInCommunicationMode() throws Exception {
+        Context context = ApplicationProvider.getApplicationContext();
+        NativeAudio plugin = new NativeAudio();
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        Field audioManagerField = NativeAudio.class.getDeclaredField("audioManager");
+        audioManagerField.setAccessible(true);
+        audioManagerField.set(plugin, audioManager);
+
+        audioManager.setSpeakerphoneOn(false);
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        Method resolveAudioRoute = NativeAudio.class.getDeclaredMethod("resolveAudioRoute");
+        resolveAudioRoute.setAccessible(true);
+        assertEquals("earpiece", resolveAudioRoute.invoke(plugin));
+    }
 }

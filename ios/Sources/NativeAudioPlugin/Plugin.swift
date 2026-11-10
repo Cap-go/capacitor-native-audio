@@ -203,7 +203,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
-    private func resolvePlaybackState(assetId: String, audioAsset: AudioAsset?) -> PlaybackStateValue {
+    internal func resolvePlaybackState(assetId: String, audioAsset: AudioAsset?) -> PlaybackStateValue {
         if let audioAsset, audioAsset.isPlaying() {
             return .playing
         }
@@ -1664,6 +1664,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     audioAsset.stop()
                 }
             }
+            self.playbackQueueIds = []
+            self.playbackQueueItemById = [:]
+            self.playbackQueueIndex = -1
+            self.refreshQueueRemoteCommands()
         }
 
         // Clear notification center

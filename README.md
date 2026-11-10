@@ -245,8 +245,8 @@ npx cap sync
 | clearQueue     | ✅      | ✅  | ✅  |
 | getPlaybackState | ✅    | ✅  | ✅  |
 | getRate        | ✅      | ✅  | ✅  |
-| setSpeaker     | ✅      | ✅  | no-op |
-| setEarpiece    | ✅      | ✅  | no-op |
+| setSpeaker     | ✅      | ✅  | emits `audioRouteChange` |
+| setEarpiece    | ✅      | ✅  | emits `audioRouteChange` |
 | getAudioRoute  | ✅      | ✅  | speaker only |
 
 See [docs/MIGRATION.md](docs/MIGRATION.md) for migration notes and [docs/PLAYLIST.md](docs/PLAYLIST.md) for a queue example.
