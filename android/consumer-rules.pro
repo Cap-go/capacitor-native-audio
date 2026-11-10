@@ -2,6 +2,10 @@
 # Applied via consumerProguardFiles in the library module.
 
 # NativeAudio is loaded by Capacitor using the class name from @CapacitorPlugin and methods are discovered reflectively.
+# Keep Capacitor annotation types PluginHandle reads through getAnnotation.
+-keep @interface com.getcapacitor.annotation.** { *; }
+-keep @interface com.getcapacitor.PluginMethod { *; }
+
 -keep @com.getcapacitor.annotation.CapacitorPlugin class ee.forgr.audio.NativeAudio {
     *;
 }
