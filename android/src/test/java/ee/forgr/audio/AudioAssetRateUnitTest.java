@@ -4,7 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import android.app.Activity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.content.res.AssetFileDescriptor;
 import android.os.ParcelFileDescriptor;
 import java.io.File;
@@ -23,7 +23,7 @@ public class AudioAssetRateUnitTest {
     @Test
     public void setRate_clampsAndStoresPlaybackRate() throws Exception {
         NativeAudio owner = mock(NativeAudio.class);
-        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        AppCompatActivity activity = Robolectric.buildActivity(AppCompatActivity.class).setup().get();
         when(owner.getActivity()).thenReturn(activity);
 
         File wavFile = File.createTempFile("native-audio-rate", ".wav");

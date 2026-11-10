@@ -40,8 +40,6 @@ public class QueueSnapshotRoutingUnitTest {
     public void resolveAudioRoute_reportsSpeakerWhenSpeakerphoneEnabled() throws Exception {
         Context context = ApplicationProvider.getApplicationContext();
         NativeAudio plugin = new NativeAudio();
-        plugin.setContext(context);
-
         AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         Field audioManagerField = NativeAudio.class.getDeclaredField("audioManager");
         audioManagerField.setAccessible(true);
