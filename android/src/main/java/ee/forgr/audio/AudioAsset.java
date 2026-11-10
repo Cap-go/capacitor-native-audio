@@ -226,8 +226,12 @@ public class AudioAsset implements AutoCloseable {
         throw new Exception("AudioDispatcher is null");
     }
 
+    static float clampPlaybackRate(float rate) {
+        return Math.max(0.25f, Math.min(4.0f, rate));
+    }
+
     public void setRate(float rate) throws Exception {
-        final float clamped = Math.max(0.25f, Math.min(4.0f, rate));
+        final float clamped = clampPlaybackRate(rate);
         playbackRate = clamped;
         for (int x = 0; x < audioList.size(); x++) {
             AudioDispatcher audio = audioList.get(x);

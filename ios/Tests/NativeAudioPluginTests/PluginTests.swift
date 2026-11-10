@@ -41,7 +41,6 @@ class PluginTests: XCTestCase {
         // Try to delete the temporary file
         try? FileManager.default.removeItem(at: tempFileURL)
 
-        plugin = nil
         super.tearDown()
     }
 
