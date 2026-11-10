@@ -39,7 +39,10 @@ export interface AssetRate {
    */
   assetId: string;
   /**
-   * Rate of the audio, between 0.1 and 1.0
+   * Playback rate multiplier. Native engines clamp between 0.25 and 4.0.
+   * Pitch is preserved on iOS and Android where the platform supports it.
+   *
+   * @default 1.0
    */
   rate: number;
 }
@@ -195,6 +198,14 @@ export interface ConfigureOptions {
    * @see https://github.com/Cap-go/capacitor-native-audio/issues/202
    */
   showNotification?: boolean;
+  /**
+   * Seconds between `progress` events while audio is playing.
+   * The `currentTime` event still fires about every 100ms.
+   *
+   * @default 0.5
+   * @since 8.5.0
+   */
+  progressInterval?: number;
   /**
    * Enable background audio playback (Android only)
    *
@@ -407,6 +418,98 @@ export interface PlaybackStateEvent {
 
 export type PlaybackStateListener = (state: PlaybackStateEvent) => void;
 
+export type AudioRouteValue = 'speaker' | 'earpiece' | 'external';
+
+export interface AudioRouteChangeEvent {
+  /**
+   * Active output route after the change.
+   */
+  route: AudioRouteValue;
+}
+
+export type AudioRouteChangeListener = (event: AudioRouteChangeEvent) => void;
+
+export interface ProgressEvent {
+  /**
+   * Asset Id of the playing item.
+   */
+  assetId: string;
+  /**
+   * Current position in seconds.
+   */
+  position: number;
+  /**
+   * Duration in seconds when known, otherwise 0.
+   */
+  duration: number;
+}
+
+export type ProgressListener = (event: ProgressEvent) => void;
+
+/**
+ * One entry in a playback queue. Uses the same fields as {@link PreloadOptions}.
+ */
+export type QueueItem = Pick<
+  PreloadOptions,
+  'assetId' | 'assetPath' | 'isUrl' | 'volume' | 'audioChannelNum' | 'notificationMetadata' | 'headers'
+>;
+
+export interface SetQueueOptions {
+  /**
+   * Ordered list of tracks to play.
+   */
+  items: QueueItem[];
+  /**
+   * Index of the item to prepare first.
+   *
+   * @default 0
+   */
+  startIndex?: number;
+  /**
+   * Start playback after the first item is ready.
+   *
+   * @default false
+   */
+  autoPlay?: boolean;
+}
+
+export interface QueueState {
+  /**
+   * Asset Id of the currently selected queue item, or empty when the queue is cleared.
+   */
+  assetId: string;
+  /**
+   * Zero-based index in the queue, or -1 when empty.
+   */
+  index: number;
+  /**
+   * Number of items in the queue.
+   */
+  count: number;
+  /**
+   * Ordered asset ids in the queue.
+   */
+  assetIds: string[];
+}
+
+export interface QueueChangeEvent {
+  assetId: string;
+  index: number;
+  /**
+   * Why the queue selection changed, for example `setQueue`, `next`, `previous`, `select`, or `remoteNext`.
+   */
+  reason: string;
+}
+
+export type QueueChangeListener = (event: QueueChangeEvent) => void;
+
+export interface GetPlaybackStateOptions {
+  /**
+   * Asset to inspect. When omitted, uses the active queue item or the last playing asset on native platforms.
+   */
+  assetId?: string;
+}
+
 export interface NativeAudio {
   /**
    * Configure the audio player
@@ -570,6 +673,75 @@ export interface NativeAudio {
   getDuration(options: Assets): Promise<{ duration: number }>;
 
   /**
+   * Snapshot of playback for UI rehydration after navigation or missed events.
+   *
+   * @since 8.5.0
+   */
+  getPlaybackState(options?: GetPlaybackStateOptions): Promise<PlaybackStateEvent>;
+
+  /**
+   * Current global playback rate for the asset (same value set with `setRate`).
+   *
+   * @since 8.5.0
+   */
+  getRate(options: Assets): Promise<{ rate: number }>;
+
+  /**
+   * Prepare an ordered queue for podcasts, playlists, or guided sessions.
+   * Existing `preload` assets are reused when ids match.
+   *
+   * @since 8.5.0
+   */
+  setQueue(options: SetQueueOptions): Promise<QueueState>;
+
+  /**
+   * @since 8.5.0
+   */
+  clearQueue(): Promise<void>;
+
+  /**
+   * @since 8.5.0
+   */
+  getQueueState(): Promise<QueueState>;
+
+  /**
+   * @since 8.5.0
+   */
+  queueNext(): Promise<QueueState>;
+
+  /**
+   * @since 8.5.0
+   */
+  queuePrevious(): Promise<QueueState>;
+
+  /**
+   * @since 8.5.0
+   */
+  queueSelect(options: Assets): Promise<QueueState>;
+
+  /**
+   * Prefer the built-in speaker. No effect while headphones or Bluetooth are connected.
+   *
+   * @platform iOS, Android
+   * @since 8.5.0
+   */
+  setSpeaker(): Promise<void>;
+
+  /**
+   * Route call-style audio to the earpiece on phones.
+   *
+   * @platform iOS, Android
+   * @since 8.5.0
+   */
+  setEarpiece(): Promise<void>;
+
+  /**
+   * @platform iOS, Android
+   * @since 8.5.0
+   */
+  getAudioRoute(): Promise<{ route: AudioRouteValue }>;
+
+  /**
    * Check if an audio file is playing
    *
    * @since 5.0.0
@@ -596,12 +768,32 @@ export interface NativeAudio {
   addListener(eventName: 'currentTime', listenerFunc: CurrentTimeListener): Promise<PluginListenerHandle>;
   /**
    * Listen for playback state changes, including notification and lock-screen transport controls.
-   * Emitted by Android and iOS. The current Web implementation does not emit this event.
+   * Emitted on Android, iOS, and Web when plugin transport methods change playback state.
    *
    * @since 8.3.15
    * return {@link PlaybackStateEvent}
    */
   addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener): Promise<PluginListenerHandle>;
+  /**
+   * Coarse progress for scrubbers and chapter UI. Interval comes from `configure({ progressInterval })`.
+   *
+   * @since 8.5.0
+   */
+  addListener(eventName: 'progress', listenerFunc: ProgressListener): Promise<PluginListenerHandle>;
+  /**
+   * Fires when the active queue item changes.
+   *
+   * @since 8.5.0
+   */
+  addListener(eventName: 'queueChange', listenerFunc: QueueChangeListener): Promise<PluginListenerHandle>;
+  /**
+   * Fires when the plugin changes routing via `setSpeaker()` or `setEarpiece()`.
+   * Does not fire for system route changes such as plugging in headphones or Bluetooth.
+   *
+   * @platform iOS, Android
+   * @since 8.5.0
+   */
+  addListener(eventName: 'audioRouteChange', listenerFunc: AudioRouteChangeListener): Promise<PluginListenerHandle>;
   /**
    * Clear the audio cache for remote audio files
    * @since 6.5.0

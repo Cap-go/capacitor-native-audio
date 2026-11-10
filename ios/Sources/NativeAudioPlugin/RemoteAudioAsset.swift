@@ -287,14 +287,21 @@ public class RemoteAudioAsset: AudioAsset {
         setVolume(volume: volume, fadeDuration: 0)
     }
 
+    private var requestedRate: Float = Constant.DefaultRate
+
     override func setRate(rate: NSNumber) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self else { return }
             let validRate = min(max(rate.floatValue, Constant.MinRate), Constant.MaxRate)
+            self.requestedRate = validRate
             for player in players {
                 player.rate = validRate
             }
         }
+    }
+
+    override func getPlaybackRate() -> Float {
+        return owner?.readOnAudioQueue { requestedRate } ?? Constant.DefaultRate
     }
 
     override func isPlaying() -> Bool {

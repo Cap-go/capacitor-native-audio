@@ -8,7 +8,7 @@ enum MyError: Error {
     case runtimeError(String)
 }
 
-private enum PlaybackStateValue: String {
+internal enum PlaybackStateValue: String {
     case playing
     case paused
     case stopped
@@ -41,7 +41,18 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "setCurrentTime", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearCache", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getPluginVersion", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "deinitPlugin", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "deinitPlugin", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPlaybackState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getRate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setQueue", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearQueue", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getQueueState", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queueNext", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queuePrevious", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queueSelect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setSpeaker", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setEarpiece", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getAudioRoute", returnType: CAPPluginReturnPromise)
     ]
     private var logger = Logger(logTag: "NativeAudio")
     internal let audioQueue = DispatchQueue(label: "ee.forgr.audio.queue", qos: .userInitiated, attributes: .concurrent)
@@ -69,12 +80,15 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var interruptionObserver: Any?
 
     // Notification center support
-    private var showNotification = false
+    internal var showNotification = false
+    internal var routeControlSavedCategory: AVAudioSession.Category?
+    internal var routeControlSavedOptions: AVAudioSession.CategoryOptions?
+    internal var routeControlSavedMode: AVAudioSession.Mode?
     /// A mapping from asset IDs to their associated notification metadata for media playback.
     ///
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
     internal var notificationMetadataMap: [String: [String: String]] = [:]
-    private var currentlyPlayingAssetId: String?
+    internal var currentlyPlayingAssetId: String?
 
     /// Stores the asset IDs for playOnce operations to enable automatic cleanup after playback.
     ///
@@ -84,20 +98,31 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var pendingPlayTasks: [String: DispatchWorkItem] = [:]
     private var audioAssetData: [String: [String: Any]] = [:]
     var isRunningTests = false
+    internal var playbackQueueIds: [String] = []
+    internal var playbackQueueIndex: Int = -1
+    internal var playbackQueueItemById: [String: [String: Any]] = [:]
+    internal var configuredProgressInterval: Double = 0.5
+    private var lastProgressEmitByAsset: [String: TimeInterval] = [:]
 
     /// Initialize plugin state and audio-related handlers, and register background behavior for session management.
     ///
     /// Performs initial plugin setup after the plugin is loaded.
     ///
     /// Registers the plugin's audio queue, initializes default flags, defers full audio session activation until first use, and configures interruption handling and remote command controls. Also adds a background observer that will deactivate the audio session when the app enters background if no plugin-managed audio is playing and the system reports no other active audio.
+    /// Registers the audio-queue thread marker used by `audioList` access assertions. Call from XCTest when `load()` is not run.
+    internal func bindAudioQueueForUnitTests() {
+        audioQueue.setSpecific(key: queueKey, value: true)
+    }
+
     @objc override public func load() {
         super.load()
-        audioQueue.setSpecific(key: queueKey, value: true)
+        bindAudioQueueForUnitTests()
 
         // Don't setup audio session on load - defer until first use
         // setupAudioSession()
         setupInterruptionHandling()
         setupRemoteCommandCenter()
+        setupQueueRemoteCommandsIfNeeded()
 
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let strongSelf = self else { return }
@@ -178,7 +203,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
-    private func resolvePlaybackState(assetId: String, audioAsset: AudioAsset?) -> PlaybackStateValue {
+    internal func resolvePlaybackState(assetId: String, audioAsset: AudioAsset?) -> PlaybackStateValue {
         if let audioAsset, audioAsset.isPlaying() {
             return .playing
         }
@@ -192,7 +217,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         return .stopped
     }
 
-    private func notifyPlaybackState(assetId: String, reason: String, state: PlaybackStateValue? = nil, audioAsset: AudioAsset? = nil) {
+    internal func notifyPlaybackState(assetId: String, reason: String, state: PlaybackStateValue? = nil, audioAsset: AudioAsset? = nil) {
         let emit = {
             let asset = audioAsset ?? self.audioList[assetId] as? AudioAsset
             let resolvedState = state ?? self.resolvePlaybackState(assetId: assetId, audioAsset: asset)
@@ -479,6 +504,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         let focus = call.getBool(Constant.FocusAudio) ?? false
         let background = call.getBool(Constant.Background) ?? false
         let ignoreSilent = call.getBool(Constant.IgnoreSilent) ?? true
+        if let progressInterval = call.getDouble("progressInterval"), progressInterval > 0 {
+            configuredProgressInterval = progressInterval
+        }
         // Only update showNotification when explicitly provided so repeated configure() calls
         // (e.g. when switching assets) don't reset it to false and break Now Playing for the next play
         if let showNotification = call.getBool(Constant.ShowNotification) {
@@ -487,7 +515,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
         logger.info("Configuring audio session with focus=%@ background=%@ ignoreSilent=%@", "\(focus)", "\(background)", "\(ignoreSilent)")
 
-        // Use a single audio session configuration block for better atomicity
+        do {
+            try restoreRouteControlSessionIfNeeded()
+        } catch {
+            logger.error("Failed to restore route-control session before configure: %@", error.localizedDescription)
+        }
+
         do {
             // Set category first
             // Fix for issue #202: When showNotification is enabled, use .playback without
@@ -1595,6 +1628,19 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                 "assetId": asset.assetId
             ])
 
+            let now = Date().timeIntervalSince1970
+            let last = lastProgressEmitByAsset[asset.assetId] ?? 0
+            if now - last >= configuredProgressInterval {
+                lastProgressEmitByAsset[asset.assetId] = now
+                let rawDuration = asset.getDuration()
+                let duration = rawDuration.isFinite ? rawDuration : 0
+                notifyListeners("progress", data: [
+                    "assetId": asset.assetId,
+                    "position": currentTime,
+                    "duration": duration
+                ])
+            }
+
             if let fadeData = audioAssetData[asset.assetId],
                let fadeOut = fadeData["fadeOut"] as? Bool, fadeOut,
                let fadeOutStartTime = fadeData["fadeOutStartTime"] as? Double,
@@ -1618,6 +1664,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     audioAsset.stop()
                 }
             }
+            self.playbackQueueIds = []
+            self.playbackQueueItemById = [:]
+            self.playbackQueueIndex = -1
+            self.refreshQueueRemoteCommands()
         }
 
         // Clear notification center
@@ -1655,7 +1705,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     ///   - audioId: The asset identifier used to retrieve Now Playing metadata.
     ///   - audioAsset: The audio asset used to obtain current playback time and duration.
 
-    private func updateNowPlayingInfo(audioId: String, audioAsset: AudioAsset) {
+    internal func updateNowPlayingInfo(audioId: String, audioAsset: AudioAsset) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 

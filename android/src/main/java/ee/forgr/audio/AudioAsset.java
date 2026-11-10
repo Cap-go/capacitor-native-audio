@@ -46,6 +46,7 @@ public class AudioAsset implements AutoCloseable {
 
     protected final float zeroVolume = 0.001f;
     protected final float maxVolume = 1.0f;
+    protected float playbackRate = 1.0f;
 
     AudioAsset(NativeAudio owner, String assetId, AssetFileDescriptor assetFileDescriptor, int audioChannelNum, float volume)
         throws Exception {
@@ -225,13 +226,23 @@ public class AudioAsset implements AutoCloseable {
         throw new Exception("AudioDispatcher is null");
     }
 
+    static float clampPlaybackRate(float rate) {
+        return Math.max(0.25f, Math.min(4.0f, rate));
+    }
+
     public void setRate(float rate) throws Exception {
+        final float clamped = clampPlaybackRate(rate);
+        playbackRate = clamped;
         for (int x = 0; x < audioList.size(); x++) {
             AudioDispatcher audio = audioList.get(x);
             if (audio != null) {
-                audio.setRate(rate);
+                audio.setRate(clamped);
             }
         }
+    }
+
+    public float getPlaybackRate() {
+        return playbackRate;
     }
 
     public boolean isPlaying() throws Exception {

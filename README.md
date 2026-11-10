@@ -16,14 +16,38 @@ Play sound effects, music and streams with native audio engines in your Capacito
   <img src="https://raw.githubusercontent.com/Cap-go/capacitor-native-audio/main/assets/github-social-preview.png" alt="@capgo/capacitor-native-audio for Capacitor apps" width="300" />
 </p>
 
+## Why pick Native Audio?
+
+**`@capgo/capacitor-native-audio`** is the free, native Capacitor 8 audio stack for sound effects, music, podcasts, and guided audio in one plugin. Keep your existing `preload` / `play` workflow and add lock screen playback, queues, and UI sync without switching packages.
+
+Full reference: [capgo.app/docs/plugins/native-audio/](https://capgo.app/docs/plugins/native-audio/)
+
+### Playlist queue with lock screen skip
+
+`setQueue()`, `queueNext()`, `queuePrevious()`, and `queueSelect()` drive multi-track sessions. iOS and Android wire skip actions to the lock screen and media notification. See [queue docs](https://capgo.app/docs/plugins/native-audio/) and repo `docs/PLAYLIST.md`.
+
+### Playback snapshot
+
+`getPlaybackState()` returns asset id, play/pause/stop, position, and duration when a screen mounts after playback already started. Pairs with `playbackState` events from transport and lock screen controls.
+
+### Progress events
+
+`configure({ progressInterval })` sets how often `progress` fires for scrubbers and chapters. `currentTime` still updates about every 100ms for precise UI.
+
+### Audio routing
+
+`setSpeaker()`, `setEarpiece()`, and `getAudioRoute()` on iOS and Android for voice-heavy apps. `audioRouteChange` fires when those APIs change routing (not when headphones or Bluetooth connect on their own). On Android it tracks speakerphone mode from `setSpeaker()` / `setEarpiece()`.
+
 ## Key features
 
 - **Preload and play**: `preload()`, `play()`, `playOnce()`, `pause()`, `resume()`, `loop()` and `stop()`.
+- **Playlist queue**: `setQueue()`, `queueNext()`, `queuePrevious()`, `queueSelect()`, `getQueueState()` with lock screen skip on iOS and Android.
 - **Sources**: local files, `file://` paths, remote `https://` URLs and M3U8 HLS streams.
-- **Controls**: `setVolume()`, `setRate()`, `setCurrentTime()`, `getCurrentTime()` and `getDuration()`.
-- **Background and focus**: `configure()` sets audio focus, background playback and Now Playing controls on iOS and Android.
-- **Events**: `complete` and `currentTime` listeners, plus `playbackState` on iOS and Android.
-- **Platforms**: iOS, Android and Web. iOS uses AVFoundation, Android uses Media3 ExoPlayer. Web supports most playback calls, but not `configure()` or the `playbackState` event.
+- **Controls**: `setVolume()`, `setRate()` (0.25x to 4x), `setCurrentTime()`, `getPlaybackState()`, `getRate()`.
+- **Background and focus**: `configure()` sets audio focus, background playback, progress interval, and Now Playing controls on iOS and Android.
+- **Events**: `complete`, `currentTime`, `progress`, `playbackState`, `queueChange`, and `audioRouteChange` (native routing).
+- **Routing**: `setSpeaker()` and `setEarpiece()` on iOS and Android for voice-style apps.
+- **Platforms**: iOS (AVFoundation), Android (Media3 ExoPlayer), and Web (HTMLAudio plus Media Session for queues).
 
 <h3 align="center">Native Audio</h3>
 <p align="center">
@@ -57,6 +81,15 @@ Click on video to see example 💥
 [![YouTube Example](https://img.youtube.com/vi/XpUGlWWtwHs/0.jpg)](https://www.youtube.com/watch?v=XpUGlWWtwHs)
 
 ## Why Native Audio?
+
+Pick `@capgo/capacitor-native-audio` when you need one **free**, **native** audio stack for Capacitor 8: sound effects, long-form music, podcasts, and guided audio in the same plugin. You keep your existing `preload`/`play` flow, and you can add queues, lock screen controls, and UI sync helpers without switching plugins.
+
+### New in 8.5: playlist and UI sync
+
+- **Queue API** for multi-track sessions with `queueChange` events and notification skip controls.
+- **`getPlaybackState()`** snapshots for screens that mount after playback already started.
+- **`progress` events** on a configurable interval for scrubbers and chapter markers.
+- **Speaker and earpiece routing** on native platforms for voice-heavy apps.
 
 The only **free**, **full-featured** audio playback plugin for Capacitor:
 
@@ -191,7 +224,7 @@ npx cap sync
 
 | Name           | Android | iOS | Web |
 |:---------------| :------ | :-- | :-- |
-| configure      | ✅      | ✅  | ❌  |
+| configure      | ✅      | ✅  | partial (`progressInterval` only) |
 | preload        | ✅      | ✅  | ✅  |
 | play           | ✅      | ✅  | ✅  |
 | pause          | ✅      | ✅  | ✅  |
@@ -204,6 +237,19 @@ npx cap sync
 | setCurrentTime | ✅      | ✅  | ✅  |
 | getCurrentTime | ✅      | ✅  | ✅  |
 | isPlaying      | ✅      | ✅  | ✅  |
+| setQueue       | ✅      | ✅  | ✅  |
+| queueNext      | ✅      | ✅  | ✅  |
+| queuePrevious  | ✅      | ✅  | ✅  |
+| queueSelect    | ✅      | ✅  | ✅  |
+| getQueueState  | ✅      | ✅  | ✅  |
+| clearQueue     | ✅      | ✅  | ✅  |
+| getPlaybackState | ✅    | ✅  | ✅  |
+| getRate        | ✅      | ✅  | ✅  |
+| setSpeaker     | ✅      | ✅  | emits `audioRouteChange` |
+| setEarpiece    | ✅      | ✅  | emits `audioRouteChange` |
+| getAudioRoute  | ✅      | ✅  | speaker only |
+
+See [docs/MIGRATION.md](docs/MIGRATION.md) for migration notes and [docs/PLAYLIST.md](docs/PLAYLIST.md) for a queue example.
 
 ## Usage
 
@@ -895,6 +941,170 @@ Get the duration of an audio file in seconds
 --------------------
 
 
+### getPlaybackState(...)
+
+```typescript
+getPlaybackState(options?: GetPlaybackStateOptions | undefined) => Promise<PlaybackStateEvent>
+```
+
+Snapshot of playback for UI rehydration after navigation or missed events.
+
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#getplaybackstateoptions">GetPlaybackStateOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#playbackstateevent">PlaybackStateEvent</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### getRate(...)
+
+```typescript
+getRate(options: Assets) => Promise<{ rate: number; }>
+```
+
+Current global playback rate for the asset (same value set with `setRate`).
+
+| Param         | Type                                      |
+| ------------- | ----------------------------------------- |
+| **`options`** | <code><a href="#assets">Assets</a></code> |
+
+**Returns:** <code>Promise&lt;{ rate: number; }&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### setQueue(...)
+
+```typescript
+setQueue(options: SetQueueOptions) => Promise<QueueState>
+```
+
+Prepare an ordered queue for podcasts, playlists, or guided sessions.
+Existing `preload` assets are reused when ids match.
+
+| Param         | Type                                                        |
+| ------------- | ----------------------------------------------------------- |
+| **`options`** | <code><a href="#setqueueoptions">SetQueueOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### clearQueue()
+
+```typescript
+clearQueue() => Promise<void>
+```
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### getQueueState()
+
+```typescript
+getQueueState() => Promise<QueueState>
+```
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### queueNext()
+
+```typescript
+queueNext() => Promise<QueueState>
+```
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### queuePrevious()
+
+```typescript
+queuePrevious() => Promise<QueueState>
+```
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### queueSelect(...)
+
+```typescript
+queueSelect(options: Assets) => Promise<QueueState>
+```
+
+| Param         | Type                                      |
+| ------------- | ----------------------------------------- |
+| **`options`** | <code><a href="#assets">Assets</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### setSpeaker()
+
+```typescript
+setSpeaker() => Promise<void>
+```
+
+Prefer the built-in speaker. No effect while headphones or Bluetooth are connected.
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### setEarpiece()
+
+```typescript
+setEarpiece() => Promise<void>
+```
+
+Route call-style audio to the earpiece on phones.
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### getAudioRoute()
+
+```typescript
+getAudioRoute() => Promise<{ route: AudioRouteValue; }>
+```
+
+**Returns:** <code>Promise&lt;{ route: <a href="#audioroutevalue">AudioRouteValue</a>; }&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
 ### isPlaying(...)
 
 ```typescript
@@ -964,7 +1174,7 @@ addListener(eventName: 'playbackState', listenerFunc: PlaybackStateListener) => 
 ```
 
 Listen for playback state changes, including notification and lock-screen transport controls.
-Emitted by Android and iOS. The current Web implementation does not emit this event.
+Emitted on Android, iOS, and Web when plugin transport methods change playback state.
 
 | Param              | Type                                                                    |
 | ------------------ | ----------------------------------------------------------------------- |
@@ -975,6 +1185,67 @@ Emitted by Android and iOS. The current Web implementation does not emit this ev
 
 **Since:** 8.3.15
 return {@link PlaybackStateEvent}
+
+--------------------
+
+
+### addListener('progress', ...)
+
+```typescript
+addListener(eventName: 'progress', listenerFunc: ProgressListener) => Promise<PluginListenerHandle>
+```
+
+Coarse progress for scrubbers and chapter UI. Interval comes from `configure({ progressInterval })`.
+
+| Param              | Type                                                          |
+| ------------------ | ------------------------------------------------------------- |
+| **`eventName`**    | <code>'progress'</code>                                       |
+| **`listenerFunc`** | <code><a href="#progresslistener">ProgressListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### addListener('queueChange', ...)
+
+```typescript
+addListener(eventName: 'queueChange', listenerFunc: QueueChangeListener) => Promise<PluginListenerHandle>
+```
+
+Fires when the active queue item changes.
+
+| Param              | Type                                                                |
+| ------------------ | ------------------------------------------------------------------- |
+| **`eventName`**    | <code>'queueChange'</code>                                          |
+| **`listenerFunc`** | <code><a href="#queuechangelistener">QueueChangeListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.5.0
+
+--------------------
+
+
+### addListener('audioRouteChange', ...)
+
+```typescript
+addListener(eventName: 'audioRouteChange', listenerFunc: AudioRouteChangeListener) => Promise<PluginListenerHandle>
+```
+
+Fires when the plugin changes routing via `setSpeaker()` or `setEarpiece()`.
+Does not fire for system route changes such as plugging in headphones or Bluetooth.
+
+| Param              | Type                                                                          |
+| ------------------ | ----------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'audioRouteChange'</code>                                               |
+| **`listenerFunc`** | <code><a href="#audioroutechangelistener">AudioRouteChangeListener</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+**Since:** 8.5.0
 
 --------------------
 
@@ -1048,6 +1319,7 @@ Use this when you need to ensure compatibility with other audio plugins
 | **`background`**         | <code>boolean</code> | Play the audio in the background                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |                    |       |
 | **`ignoreSilent`**       | <code>boolean</code> | Ignore silent mode, works only on iOS setting this will nuke other audio apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                    |       |
 | **`showNotification`**   | <code>boolean</code> | Show audio playback in the notification center (iOS and Android) When enabled, displays audio metadata (title, artist, album, artwork) in the system notification and Control Center (iOS) or lock screen. **Important iOS Behavior:** Enabling this option changes the audio session category to `.playback` with `.default` mode, which means your app's audio will **interrupt** other apps' audio (like background music from Spotify, Apple Music, etc.) instead of mixing with it. This is required for the Now Playing info to appear in Control Center and on the lock screen. **Trade-offs:** - `showNotification: true` → Shows Now Playing controls, but interrupts other audio - `showNotification: false` → Audio mixes with other apps, but no Now Playing controls Use this when your app is the primary audio source (music players, podcast apps, etc.). Disable this for secondary audio like sound effects or notification sounds where mixing with background music is preferred.                                                                                                                                                                     |                    |       |
+| **`progressInterval`**   | <code>number</code>  | Seconds between `progress` events while audio is playing. The `currentTime` event still fires about every 100ms.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | <code>0.5</code>   | 8.5.0 |
 | **`backgroundPlayback`** | <code>boolean</code> | Enable background audio playback (Android only) When enabled, audio will continue playing when the app is backgrounded or the screen is locked. The plugin will skip the automatic pause/resume logic that normally occurs when the app enters the background or returns to the foreground. **Important Android Requirements:** To use background playback on Android, your app must: 1. Declare the required permissions in `AndroidManifest.xml`: - `&lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE" /&gt;` - `&lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" /&gt;` - `&lt;uses-permission android:name="android.permission.WAKE_LOCK" /&gt;` 2. Start a Foreground Service with a media-style notification before backgrounding (the plugin does not automatically create or manage the foreground service) 3. Use `showNotification: true` to display playback controls in the notification **Usage Example:** ```typescript await NativeAudio.configure({ backgroundPlayback: true, showNotification: true }); // Start your foreground service here // Then preload and play audio as normal ``` | <code>false</code> | 8.2.0 |
 
 
@@ -1161,10 +1433,10 @@ behavior details about audio mixing on iOS.
 
 #### AssetRate
 
-| Prop          | Type                | Description                             |
-| ------------- | ------------------- | --------------------------------------- |
-| **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file |
-| **`rate`**    | <code>number</code> | Rate of the audio, between 0.1 and 1.0  |
+| Prop          | Type                | Description                                                                                                                                | Default          |
+| ------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
+| **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file                                                                                                    |                  |
+| **`rate`**    | <code>number</code> | Playback rate multiplier. Native engines clamp between 0.25 and 4.0. Pitch is preserved on iOS and Android where the platform supports it. | <code>1.0</code> |
 
 
 #### AssetSetTime
@@ -1173,6 +1445,44 @@ behavior details about audio mixing on iOS.
 | ------------- | ------------------- | --------------------------------------- |
 | **`assetId`** | <code>string</code> | Asset Id, unique identifier of the file |
 | **`time`**    | <code>number</code> | Time to set the audio, in seconds       |
+
+
+#### PlaybackStateEvent
+
+| Prop              | Type                                                              | Description                                                                            |
+| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **`assetId`**     | <code>string</code>                                               | Asset Id of the audio                                                                  |
+| **`state`**       | <code><a href="#playbackstatevalue">PlaybackStateValue</a></code> | Resolved playback state after a local or remote transport action.                      |
+| **`reason`**      | <code>string</code>                                               | Reason for the state change, for example `play`, `pause`, `remotePlay`, or `complete`. |
+| **`isPlaying`**   | <code>boolean</code>                                              | Whether the asset is currently playing.                                                |
+| **`currentTime`** | <code>number</code>                                               | Current playback position in seconds when available.                                   |
+| **`duration`**    | <code>number</code>                                               | Total playback duration in seconds when available.                                     |
+
+
+#### GetPlaybackStateOptions
+
+| Prop          | Type                | Description                                                                                               |
+| ------------- | ------------------- | --------------------------------------------------------------------------------------------------------- |
+| **`assetId`** | <code>string</code> | Asset to inspect. When omitted, uses the active queue item or the last playing asset on native platforms. |
+
+
+#### QueueState
+
+| Prop           | Type                  | Description                                                                        |
+| -------------- | --------------------- | ---------------------------------------------------------------------------------- |
+| **`assetId`**  | <code>string</code>   | Asset Id of the currently selected queue item, or empty when the queue is cleared. |
+| **`index`**    | <code>number</code>   | Zero-based index in the queue, or -1 when empty.                                   |
+| **`count`**    | <code>number</code>   | Number of items in the queue.                                                      |
+| **`assetIds`** | <code>string[]</code> | Ordered asset ids in the queue.                                                    |
+
+
+#### SetQueueOptions
+
+| Prop             | Type                     | Description                                   | Default            |
+| ---------------- | ------------------------ | --------------------------------------------- | ------------------ |
+| **`items`**      | <code>QueueItem[]</code> | Ordered list of tracks to play.               |                    |
+| **`startIndex`** | <code>number</code>      | Index of the item to prepare first.           | <code>0</code>     |
+| **`autoPlay`**   | <code>boolean</code>     | Start playback after the first item is ready. | <code>false</code> |
 
 
 #### PluginListenerHandle
@@ -1197,16 +1507,29 @@ behavior details about audio mixing on iOS.
 | **`assetId`**     | <code>string</code> | Asset Id of the audio                | 6.5.0 |
 
 
-#### PlaybackStateEvent
+#### ProgressEvent
 
-| Prop              | Type                                                              | Description                                                                            |
-| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **`assetId`**     | <code>string</code>                                               | Asset Id of the audio                                                                  |
-| **`state`**       | <code><a href="#playbackstatevalue">PlaybackStateValue</a></code> | Resolved playback state after a local or remote transport action.                      |
-| **`reason`**      | <code>string</code>                                               | Reason for the state change, for example `play`, `pause`, `remotePlay`, or `complete`. |
-| **`isPlaying`**   | <code>boolean</code>                                              | Whether the asset is currently playing.                                                |
-| **`currentTime`** | <code>number</code>                                               | Current playback position in seconds when available.                                   |
-| **`duration`**    | <code>number</code>                                               | Total playback duration in seconds when available.                                     |
+| Prop           | Type                | Description                                  |
+| -------------- | ------------------- | -------------------------------------------- |
+| **`assetId`**  | <code>string</code> | Asset Id of the playing item.                |
+| **`position`** | <code>number</code> | Current position in seconds.                 |
+| **`duration`** | <code>number</code> | Duration in seconds when known, otherwise 0. |
+
+
+#### QueueChangeEvent
+
+| Prop          | Type                | Description                                                                                             |
+| ------------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
+| **`assetId`** | <code>string</code> |                                                                                                         |
+| **`index`**   | <code>number</code> |                                                                                                         |
+| **`reason`**  | <code>string</code> | Why the queue selection changed, for example `setQueue`, `next`, `previous`, `select`, or `remoteNext`. |
+
+
+#### AudioRouteChangeEvent
+
+| Prop        | Type                                                        | Description                           |
+| ----------- | ----------------------------------------------------------- | ------------------------------------- |
+| **`route`** | <code><a href="#audioroutevalue">AudioRouteValue</a></code> | Active output route after the change. |
 
 
 ### Type Aliases
@@ -1217,6 +1540,30 @@ behavior details about audio mixing on iOS.
 Construct a type with a set of properties K of type T
 
 <code>{ [P in K]: T; }</code>
+
+
+#### PlaybackStateValue
+
+<code>'playing' | 'paused' | 'stopped'</code>
+
+
+#### QueueItem
+
+One entry in a playback queue. Uses the same fields as {@link <a href="#preloadoptions">PreloadOptions</a>}.
+
+<code><a href="#pick">Pick</a>&lt; <a href="#preloadoptions">PreloadOptions</a>, 'assetId' | 'assetPath' | 'isUrl' | 'volume' | 'audioChannelNum' | 'notificationMetadata' | 'headers' &gt;</code>
+
+
+#### Pick
+
+From T, pick a set of properties whose keys are in the union K
+
+<code>{ [P in K]: T[P]; }</code>
+
+
+#### AudioRouteValue
+
+<code>'speaker' | 'earpiece' | 'external'</code>
 
 
 #### CompletedListener
@@ -1234,9 +1581,19 @@ Construct a type with a set of properties K of type T
 <code>(state: <a href="#playbackstateevent">PlaybackStateEvent</a>): void</code>
 
 
-#### PlaybackStateValue
+#### ProgressListener
 
-<code>'playing' | 'paused' | 'stopped'</code>
+<code>(event: <a href="#progressevent">ProgressEvent</a>): void</code>
+
+
+#### QueueChangeListener
+
+<code>(event: <a href="#queuechangeevent">QueueChangeEvent</a>): void</code>
+
+
+#### AudioRouteChangeListener
+
+<code>(event: <a href="#audioroutechangeevent">AudioRouteChangeEvent</a>): void</code>
 
 </docgen-api>
 

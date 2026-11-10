@@ -345,6 +345,10 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
         }
     }
 
+    func getPlaybackRate() -> Float {
+        return channels.first?.rate ?? Constant.DefaultRate
+    }
+
     func setRate(rate: NSNumber) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self else { return }

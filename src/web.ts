@@ -10,12 +10,20 @@ import type {
   AssetSetTime,
   AssetStopOptions,
   AssetVolume,
+  AudioRouteValue,
   ConfigureOptions,
+  GetPlaybackStateOptions,
+  PlaybackStateEvent,
+  PlaybackStateValue,
   PlayOnceOptions,
   PlayOnceResult,
   PreloadOptions,
+  QueueItem,
+  QueueState,
+  SetQueueOptions,
 } from './definitions';
 import { NativeAudio } from './definitions';
+import { clampPlaybackRate, DEFAULT_PROGRESS_INTERVAL_SEC, normalizeProgressInterval } from './playback-utils';
 
 type AudioAssetData = {
   fadeOut?: boolean;
@@ -51,6 +59,13 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   private debugMode = false;
   private currentTimeIntervals: Map<string, number> = new Map<string, number>();
+  private lastProgressEmitByAsset: Map<string, number> = new Map<string, number>();
+  private progressIntervalSec = DEFAULT_PROGRESS_INTERVAL_SEC;
+  private activeAssetId: string | null = null;
+  private snapshotPlaybackStateByAsset = new Map<string, PlaybackStateValue>();
+  private currentAudioRoute: AudioRouteValue = 'speaker';
+  private playbackQueue: QueueItem[] = [];
+  private playbackQueueIndex = -1;
   private readonly zeroVolume = 0.0001;
 
   constructor() {
@@ -78,7 +93,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     const audio: HTMLAudioElement = this.getAudioAsset(assetId).audio;
     this.startCurrentTimeUpdates(assetId);
     if (audio.paused) {
-      return audio.play();
+      await audio.play();
+      this.activeAssetId = assetId;
+      this.emitPlaybackState(assetId, 'resume', true);
     }
   }
 
@@ -110,6 +127,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.clearFadeOutToStopTimer(assetId);
     this.stopCurrentTimeUpdates(assetId);
     audio.pause();
+    this.emitPlaybackState(assetId, 'pause', false);
   }
 
   async setCurrentTime(options: AssetSetTime): Promise<void> {
@@ -141,7 +159,20 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   }
 
   async configure(options: ConfigureOptions): Promise<void> {
-    throw `configure is not supported for web: ${JSON.stringify(options)}`;
+    if (typeof options.progressInterval === 'number') {
+      this.progressIntervalSec = normalizeProgressInterval(options.progressInterval);
+    }
+
+    const unsupported =
+      options.focus !== undefined ||
+      options.background !== undefined ||
+      options.ignoreSilent !== undefined ||
+      options.showNotification !== undefined ||
+      options.backgroundPlayback !== undefined;
+
+    if (unsupported) {
+      throw `configure is not supported for web: ${JSON.stringify(options)}`;
+    }
   }
 
   async isPreloaded(options: PreloadOptions): Promise<{ found: boolean }> {
@@ -268,6 +299,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private onEnded(assetId: string): void {
     this.logDebug(`Playback ended for assetId: ${assetId}`);
     this.notifyListeners('complete', { assetId });
+    this.emitPlaybackState(assetId, 'complete', false, 'stopped');
   }
 
   async play(options: AssetPlayOptions): Promise<void> {
@@ -324,6 +356,8 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
 
     await audio.play();
+    this.activeAssetId = assetId;
+    this.emitPlaybackState(assetId, 'play', true);
     this.startCurrentTimeUpdates(assetId);
 
     if (options.fadeIn) {
@@ -366,7 +400,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.reset(audio);
     audio.loop = true;
     this.startCurrentTimeUpdates(options.assetId);
-    return audio.play();
+    await audio.play();
+    this.activeAssetId = options.assetId;
+    this.emitPlaybackState(options.assetId, 'loop', true);
   }
 
   async stop(options: AssetStopOptions): Promise<void> {
@@ -439,6 +475,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.delete(options.assetId);
     NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.delete(options.assetId);
     NativeAudioWeb.AUDIO_DATA_MAP.delete(options.assetId);
+    this.snapshotPlaybackStateByAsset.delete(options.assetId);
+    if (this.activeAssetId === options.assetId) {
+      this.activeAssetId = null;
+    }
     this.cleanupAudioContext(audio);
   }
 
@@ -497,7 +537,117 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
 
     const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
-    audio.playbackRate = options.rate;
+    audio.playbackRate = clampPlaybackRate(options.rate);
+  }
+
+  async getRate(options: Assets): Promise<{ rate: number }> {
+    const audio: HTMLAudioElement = this.getAudioAsset(options.assetId).audio;
+    return { rate: audio.playbackRate };
+  }
+
+  async getPlaybackState(options?: GetPlaybackStateOptions): Promise<PlaybackStateEvent> {
+    const assetId = options?.assetId ?? this.activeAssetId ?? this.getCurrentQueueAssetId();
+    if (!assetId || !NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(assetId)) {
+      return {
+        assetId: '',
+        state: 'stopped',
+        reason: 'snapshot',
+        isPlaying: false,
+        currentTime: 0,
+        duration: 0,
+      };
+    }
+
+    const audio = this.getAudioAsset(assetId).audio;
+    const isPlaying = !audio.paused && !audio.ended;
+    let state: PlaybackStateValue;
+    if (isPlaying) {
+      state = 'playing';
+    } else {
+      const tracked = this.snapshotPlaybackStateByAsset.get(assetId);
+      state = tracked ?? this.resolvePlaybackStateValue(audio, isPlaying);
+    }
+    let duration = 0;
+    if (Number.isFinite(audio.duration)) {
+      duration = audio.duration;
+    }
+
+    return {
+      assetId,
+      state,
+      reason: 'snapshot',
+      isPlaying,
+      currentTime: audio.currentTime,
+      duration,
+    };
+  }
+
+  async setQueue(options: SetQueueOptions): Promise<QueueState> {
+    if (!options.items?.length) {
+      throw 'queue requires at least one item';
+    }
+
+    this.playbackQueue = options.items;
+    const startIndex = Math.min(Math.max(options.startIndex ?? 0, 0), options.items.length - 1);
+    const item = options.items[startIndex];
+    if (!NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(item.assetId)) {
+      await this.preload(item);
+    }
+
+    this.playbackQueueIndex = startIndex;
+    this.bindQueueMediaSession();
+
+    if (options.autoPlay) {
+      await this.play({ assetId: item.assetId, time: 0 });
+      this.notifyQueueChange(item.assetId, startIndex, 'setQueue');
+    } else {
+      this.notifyQueueChange(item.assetId, startIndex, 'setQueue');
+    }
+
+    return this.buildQueueState();
+  }
+
+  async clearQueue(): Promise<void> {
+    this.playbackQueue = [];
+    this.playbackQueueIndex = -1;
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('previoustrack', null);
+      navigator.mediaSession.setActionHandler('nexttrack', null);
+    }
+  }
+
+  async getQueueState(): Promise<QueueState> {
+    return this.buildQueueState();
+  }
+
+  async queueNext(): Promise<QueueState> {
+    return this.advanceQueue(1, 'next');
+  }
+
+  async queuePrevious(): Promise<QueueState> {
+    return this.advanceQueue(-1, 'previous');
+  }
+
+  async queueSelect(options: Assets): Promise<QueueState> {
+    const index = this.playbackQueue.findIndex((item) => item.assetId === options.assetId);
+    if (index < 0) {
+      throw 'asset is not in the queue';
+    }
+    return this.selectQueueIndex(index, 'select');
+  }
+
+  async setSpeaker(): Promise<void> {
+    this.currentAudioRoute = 'speaker';
+    this.notifyAudioRouteChange('speaker');
+  }
+
+  async setEarpiece(): Promise<void> {
+    this.currentAudioRoute = 'earpiece';
+    this.notifyAudioRouteChange('earpiece');
+  }
+
+  async getAudioRoute(): Promise<{ route: AudioRouteValue }> {
+    return { route: this.currentAudioRoute };
   }
 
   async isPlaying(options: Assets): Promise<{ isPlaying: boolean }> {
@@ -607,6 +757,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       if (!audio.paused) {
         const currentTime = Math.round(audio.currentTime * 10) / 10;
         this.notifyListeners('currentTime', { assetId, currentTime });
+        this.emitProgressIfDue(assetId, currentTime, audio.duration);
         this.logDebug(`Current time update for assetId: ${assetId}, currentTime: ${currentTime}`);
 
         const data = this.getAudioAssetData(assetId);
@@ -680,6 +831,113 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       await this.unload({ assetId });
     }
     this.stopCurrentTimeUpdates();
+    this.snapshotPlaybackStateByAsset.clear();
+    await this.clearQueue();
+  }
+
+  private resolvePlaybackStateValue(audio: HTMLAudioElement, isPlaying: boolean): PlaybackStateValue {
+    if (isPlaying) {
+      return 'playing';
+    }
+    return audio.ended ? 'stopped' : 'paused';
+  }
+
+  private emitPlaybackState(
+    assetId: string,
+    reason: string,
+    isPlaying: boolean,
+    forcedState?: PlaybackStateValue,
+  ): void {
+    const audio = this.getAudioAsset(assetId).audio;
+    const state = forcedState ?? this.resolvePlaybackStateValue(audio, isPlaying);
+    this.snapshotPlaybackStateByAsset.set(assetId, state);
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    this.notifyListeners('playbackState', {
+      assetId,
+      state,
+      reason,
+      isPlaying,
+      currentTime: audio.currentTime,
+      duration,
+    });
+  }
+
+  private emitProgressIfDue(assetId: string, position: number, rawDuration: number): void {
+    const now = Date.now() / 1000;
+    const last = this.lastProgressEmitByAsset.get(assetId) ?? 0;
+    if (now - last < this.progressIntervalSec) {
+      return;
+    }
+    this.lastProgressEmitByAsset.set(assetId, now);
+    const duration = Number.isFinite(rawDuration) ? rawDuration : 0;
+    this.notifyListeners('progress', { assetId, position, duration });
+  }
+
+  private async advanceQueue(delta: number, reason: string): Promise<QueueState> {
+    if (!this.playbackQueue.length) {
+      throw 'queue is empty';
+    }
+    const nextIndex = this.playbackQueueIndex + delta;
+    if (nextIndex < 0 || nextIndex >= this.playbackQueue.length) {
+      throw 'queue boundary reached';
+    }
+    return this.selectQueueIndex(nextIndex, reason);
+  }
+
+  private async selectQueueIndex(index: number, reason: string): Promise<QueueState> {
+    const item = this.playbackQueue[index];
+    const previousId = this.getCurrentQueueAssetId();
+    this.playbackQueueIndex = index;
+    if (previousId && previousId !== item.assetId && NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(previousId)) {
+      await this.stop({ assetId: previousId });
+    }
+    if (!NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(item.assetId)) {
+      await this.preload(item);
+    }
+    await this.play({ assetId: item.assetId, time: 0 });
+    this.notifyQueueChange(item.assetId, index, reason);
+    return this.buildQueueState();
+  }
+
+  private notifyQueueChange(assetId: string, index: number, reason: string): void {
+    this.notifyListeners('queueChange', { assetId, index, reason });
+  }
+
+  private notifyAudioRouteChange(route: AudioRouteValue): void {
+    this.notifyListeners('audioRouteChange', { route });
+  }
+
+  private getCurrentQueueAssetId(): string {
+    if (this.playbackQueueIndex < 0 || this.playbackQueueIndex >= this.playbackQueue.length) {
+      return '';
+    }
+    return this.playbackQueue[this.playbackQueueIndex].assetId;
+  }
+
+  private buildQueueState(): QueueState {
+    return {
+      assetId: this.getCurrentQueueAssetId(),
+      index: this.playbackQueueIndex,
+      count: this.playbackQueue.length,
+      assetIds: this.playbackQueue.map((item) => item.assetId),
+    };
+  }
+
+  private bindQueueMediaSession(): void {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) {
+      return;
+    }
+
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      this.queuePrevious().catch(() => {
+        // ignore queue boundary and empty-queue errors
+      });
+    });
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      this.queueNext().catch(() => {
+        // ignore queue boundary and empty-queue errors
+      });
+    });
   }
 }
 
