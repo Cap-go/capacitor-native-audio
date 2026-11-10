@@ -11,14 +11,15 @@ final class QueueSnapshotRoutingTests: XCTestCase {
         super.setUp()
         plugin = NativeAudio()
         plugin.isRunningTests = true
+        plugin.bindAudioQueueForUnitTests()
     }
 
     override func tearDown() {
         plugin.readOnAudioQueue {
-            self.plugin.audioList.removeAll()
             self.plugin.playbackQueueIds = []
             self.plugin.playbackQueueItemById = [:]
             self.plugin.playbackQueueIndex = -1
+            self.plugin.showNotification = false
         }
         super.tearDown()
     }
@@ -35,11 +36,10 @@ final class QueueSnapshotRoutingTests: XCTestCase {
     }
 
     func testRemoteAssetGetPlaybackRate_returnsRequestedRateWhileIdle() {
-        let expectation = XCTestExpectation(description: "remote requested rate")
         let tempPath = NSTemporaryDirectory().appending("remote-rate.mp3")
         FileManager.default.createFile(atPath: tempPath, contents: Data(), attributes: nil)
 
-        plugin.executeOnAudioQueue {
+        plugin.readOnAudioQueue {
             let asset = RemoteAudioAsset(
                 owner: self.plugin,
                 withAssetId: "remote-rate",
@@ -49,13 +49,8 @@ final class QueueSnapshotRoutingTests: XCTestCase {
                 withHeaders: nil
             )
             asset.setRate(rate: NSNumber(value: 1.75))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                XCTAssertEqual(asset.getPlaybackRate(), 1.75, accuracy: 0.001)
-                expectation.fulfill()
-            }
+            XCTAssertEqual(asset.getPlaybackRate(), 1.75, accuracy: 0.001)
         }
-
-        wait(for: [expectation], timeout: 3.0)
     }
 
     func testBuildQueueStateDictionary_reflectsQueueSelection() {

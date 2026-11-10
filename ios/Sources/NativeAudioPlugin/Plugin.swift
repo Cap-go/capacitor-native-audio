@@ -109,9 +109,14 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     /// Performs initial plugin setup after the plugin is loaded.
     ///
     /// Registers the plugin's audio queue, initializes default flags, defers full audio session activation until first use, and configures interruption handling and remote command controls. Also adds a background observer that will deactivate the audio session when the app enters background if no plugin-managed audio is playing and the system reports no other active audio.
+    /// Registers the audio-queue thread marker used by `audioList` access assertions. Call from XCTest when `load()` is not run.
+    internal func bindAudioQueueForUnitTests() {
+        audioQueue.setSpecific(key: queueKey, value: true)
+    }
+
     @objc override public func load() {
         super.load()
-        audioQueue.setSpecific(key: queueKey, value: true)
+        bindAudioQueueForUnitTests()
 
         // Don't setup audio session on load - defer until first use
         // setupAudioSession()
