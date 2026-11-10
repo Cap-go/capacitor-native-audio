@@ -247,7 +247,7 @@ npx cap sync
 | getRate        | ✅      | ✅  | ✅  |
 | setSpeaker     | ✅      | ✅  | emits `audioRouteChange` |
 | setEarpiece    | ✅      | ✅  | emits `audioRouteChange` |
-| getAudioRoute  | ✅      | ✅  | speaker only |
+| getAudioRoute  | ✅      | ✅  | last requested route |
 
 See [docs/MIGRATION.md](docs/MIGRATION.md) for migration notes and [docs/PLAYLIST.md](docs/PLAYLIST.md) for a queue example.
 
@@ -1097,6 +1097,11 @@ Route call-style audio to the earpiece on phones.
 ```typescript
 getAudioRoute() => Promise<{ route: AudioRouteValue; }>
 ```
+
+Returns the current audio output route label.
+On iOS and Android this reflects the device route (speaker, earpiece, or external).
+On Web this returns the last route requested via `setSpeaker()` or `setEarpiece()`
+and does not change the real browser output device.
 
 **Returns:** <code>Promise&lt;{ route: <a href="#audioroutevalue">AudioRouteValue</a>; }&gt;</code>
 
