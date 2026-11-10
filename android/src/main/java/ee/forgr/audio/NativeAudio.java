@@ -1410,8 +1410,22 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         }
     }
 
-    private boolean isStringValid(String value) {
-        return (value != null && !value.isEmpty() && !value.equals("null"));
+    static boolean isStringValid(String value) {
+        return value != null && !value.isEmpty() && !"null".equals(value);
+    }
+
+    static boolean queueItemIsValid(String assetId, String assetPath) {
+        return isStringValid(assetId) && isStringValid(assetPath);
+    }
+
+    static String playbackStateLabel(int playbackState) {
+        if (playbackState == PlaybackStateCompat.STATE_PLAYING) {
+            return "playing";
+        }
+        if (playbackState == PlaybackStateCompat.STATE_PAUSED) {
+            return "paused";
+        }
+        return "stopped";
     }
 
     /**
@@ -1948,7 +1962,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
         JSObject ret = new JSObject();
         ret.put("assetId", audioId);
-        ret.put("state", playbackStateToString(playbackState));
+        ret.put("state", playbackStateLabel(playbackState));
         ret.put("reason", reason);
         ret.put("isPlaying", playbackState == PlaybackStateCompat.STATE_PLAYING);
 
@@ -1972,16 +1986,6 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             return;
         }
         playbackStateByAssetId.remove(audioId);
-    }
-
-    private String playbackStateToString(int playbackState) {
-        if (playbackState == PlaybackStateCompat.STATE_PLAYING) {
-            return "playing";
-        }
-        if (playbackState == PlaybackStateCompat.STATE_PAUSED) {
-            return "paused";
-        }
-        return "stopped";
     }
 
     private PendingIntent getNotificationContentIntent() {
@@ -2249,7 +2253,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 playbackQueueItems.clear();
                 for (int i = 0; i < items.length(); i++) {
                     JSObject item = JSObject.fromJSONObject(items.getJSONObject(i));
-                    if (item != null && isStringValid(item.getString(ASSET_ID))) {
+                    if (item != null && queueItemIsValid(item.getString(ASSET_ID), item.getString(ASSET_PATH))) {
                         playbackQueueItems.add(item);
                     }
                 }
@@ -2399,6 +2403,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         AudioAsset asset = audioAssetList.get(assetId);
         currentlyPlayingAssetId = assetId;
         asset.play(0);
+        updateTrackedPlaybackState(assetId, PlaybackStateCompat.STATE_PLAYING);
         notifyPlaybackState(assetId, reason);
         notifyQueueChange(assetId, playbackQueueIndex, reason);
         updateNotification(assetId);
@@ -2433,6 +2438,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         AudioAsset asset = loadAudioAsset(assetId, assetPath, isLocalUrl, volume, audioChannelNum, headersObj);
         if (asset == null) {
             throw new Exception("Failed to load queue asset");
+        }
+        if (asset instanceof RemoteAudioAsset) {
+            ((RemoteAudioAsset) asset).awaitPlayersInitialized();
         }
         asset.setCompletionListener(this::dispatchComplete);
         audioAssetList.put(assetId, asset);

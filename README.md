@@ -36,7 +36,7 @@ Full reference: [capgo.app/docs/plugins/native-audio/](https://capgo.app/docs/pl
 
 ### Audio routing
 
-`setSpeaker()`, `setEarpiece()`, and `getAudioRoute()` on iOS and Android for voice-heavy apps. `audioRouteChange` keeps UI aligned when output switches to headphones or Bluetooth.
+`setSpeaker()`, `setEarpiece()`, and `getAudioRoute()` on iOS and Android for voice-heavy apps. `audioRouteChange` fires when those APIs change routing (not when headphones or Bluetooth connect on their own). On Android it tracks speakerphone mode from `setSpeaker()` / `setEarpiece()`.
 
 ## Key features
 
@@ -249,7 +249,7 @@ npx cap sync
 | setEarpiece    | ✅      | ✅  | no-op |
 | getAudioRoute  | ✅      | ✅  | speaker only |
 
-See [docs/MIGRATION.md](docs/MIGRATION.md) for queue and event examples.
+See [docs/MIGRATION.md](docs/MIGRATION.md) for migration notes and [docs/PLAYLIST.md](docs/PLAYLIST.md) for a queue example.
 
 ## Usage
 
@@ -1235,7 +1235,8 @@ Fires when the active queue item changes.
 addListener(eventName: 'audioRouteChange', listenerFunc: AudioRouteChangeListener) => Promise<PluginListenerHandle>
 ```
 
-Fires when speaker, earpiece, or external route changes.
+Fires when the plugin changes routing via `setSpeaker()` or `setEarpiece()`.
+Does not fire for system route changes such as plugging in headphones or Bluetooth.
 
 | Param              | Type                                                                          |
 | ------------------ | ----------------------------------------------------------------------------- |

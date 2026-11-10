@@ -37,7 +37,7 @@
   "scripts": {
     "capacitor:sync:after": "node scripts/configure-dependencies.js",
     "verify": "bun run verify:ios && bun run verify:android && bun run verify:web",
-    "verify:ios": "xcodebuild -scheme CapgoCapacitorNativeAudio -destination generic/platform=iOS",
+    "verify:ios": "xcodebuild test -scheme CapgoCapacitorNativeAudio -destination 'platform=iOS Simulator,name=iPhone 16'",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
     "verify:web": "bun run build && bun run test:web",
     "test": "bun run test:web && bun run test:ios",
@@ -83,7 +83,7 @@
     "swiftlint": "^2.0.0",
     "typescript": "^6.0.3",
     "vitest": "^3.2.4",
-    "happy-dom": "^17.6.3",
+    "happy-dom": "^20.8.9",
     "prettier-pretty-check": "^0.2.0"
   },
   "peerDependencies": {

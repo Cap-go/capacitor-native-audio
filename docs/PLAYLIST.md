@@ -3,12 +3,20 @@
 ```typescript
 import { NativeAudio } from '@capgo/capacitor-native-audio';
 
+// Web: only progressInterval is supported in configure().
+await NativeAudio.configure({ progressInterval: 0.5 });
+
+// iOS and Android: notification and background options (see README Notification Center section).
 await NativeAudio.configure({
   showNotification: true,
   backgroundPlayback: true,
   progressInterval: 0.5,
 });
+```
 
+`backgroundPlayback: true` skips the plugin pause or resume logic when the app backgrounds. On Android it does **not** start a foreground service. You still need manifest permissions (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`) and your own media foreground service before relying on background playback. See README Notification Center Display.
+
+```typescript
 await NativeAudio.addListener('queueChange', ({ assetId, index, reason }) => {
   console.log('queue', assetId, index, reason);
 });
@@ -37,10 +45,12 @@ await NativeAudio.setQueue({
 
 // On complete, advance manually (same as preload/play model)
 await NativeAudio.addListener('complete', async ({ assetId }) => {
-  const { index, count } = await NativeAudio.getQueueState();
+  const { assetId: selectedId, index, count } = await NativeAudio.getQueueState();
+  if (assetId !== selectedId) {
+    return;
+  }
   if (index + 1 < count) {
     await NativeAudio.queueNext();
-    await NativeAudio.resume({ assetId: (await NativeAudio.getQueueState()).assetId });
   }
 });
 

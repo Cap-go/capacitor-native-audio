@@ -619,11 +619,13 @@ public class StreamAudioAsset extends AudioAsset {
 
     @Override
     public void setRate(float rate) throws Exception {
+        final float clamped = Math.max(0.25f, Math.min(4.0f, rate));
+        playbackRate = clamped;
         owner
             .getActivity()
             .runOnUiThread(() -> {
-                logger.debug("Setting playback rate to: " + rate);
-                player.setPlaybackParameters(new PlaybackParameters(rate));
+                logger.debug("Setting playback rate to: " + clamped);
+                player.setPlaybackParameters(new PlaybackParameters(clamped));
             });
     }
 

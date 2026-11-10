@@ -117,7 +117,10 @@ extension NativeAudio {
                 "reason": "snapshot",
                 "isPlaying": isPlaying,
                 "currentTime": asset.getCurrentTime(),
-                "duration": asset.getDuration()
+                "duration": {
+                    let raw = asset.getDuration()
+                    return raw.isFinite ? raw : 0
+                }()
             ] as [String: Any])
         }
     }
@@ -168,7 +171,7 @@ extension NativeAudio {
     }
 
     internal func refreshQueueRemoteCommands() {
-        let hasQueue = playbackQueueIds.count > 1
+        let hasQueue = playbackQueueIds.count > 1 && showNotification
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.nextTrackCommand.isEnabled = hasQueue
         commandCenter.previousTrackCommand.isEnabled = hasQueue
@@ -223,7 +226,9 @@ extension NativeAudio {
         asset.play(time: 0)
         notifyPlaybackState(assetId: assetId, reason: reason, state: .playing, audioAsset: asset)
         notifyQueueChange(assetId: assetId, index: playbackQueueIndex, reason: reason)
-        updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+        if showNotification {
+            updateNowPlayingInfo(audioId: assetId, audioAsset: asset)
+        }
     }
 
     private func notifyQueueChange(assetId: String, index: Int, reason: String) {
@@ -337,6 +342,24 @@ extension NativeAudio {
             return
         }
 
+        if isUrl {
+            let filePath = URL(fileURLWithPath: assetPath).path
+            if FileManager.default.fileExists(atPath: filePath) {
+                let audioAsset = AudioAsset(
+                    owner: self,
+                    withAssetId: assetId,
+                    withPath: filePath,
+                    withChannels: Constant.DefaultChannels,
+                    withVolume: volume
+                )
+                audioList[assetId] = audioAsset
+                completion(true)
+                return
+            }
+            completion(false)
+            return
+        }
+
         let publicPath = assetPath.starts(with: "public/") ? assetPath : "public/" + assetPath
         let assetPathSplit = publicPath.components(separatedBy: ".")
         guard assetPathSplit.count >= 2,
@@ -356,8 +379,35 @@ extension NativeAudio {
         completion(true)
     }
 
+    internal func restoreRouteControlSessionIfNeeded() throws {
+        guard let savedCategory = routeControlSavedCategory else {
+            return
+        }
+        try session.overrideOutputAudioPort(.none)
+        let mode = routeControlSavedMode ?? .default
+        if let savedOptions = routeControlSavedOptions {
+            try session.setCategory(savedCategory, mode: mode, options: savedOptions)
+        } else {
+            try session.setCategory(savedCategory, mode: mode)
+        }
+        routeControlSavedCategory = nil
+        routeControlSavedOptions = nil
+        routeControlSavedMode = nil
+    }
+
     private func setAudioRouteOverride(useSpeaker: Bool, call: CAPPluginCall) {
         do {
+            if routeControlSavedCategory == nil {
+                routeControlSavedCategory = session.category
+                routeControlSavedOptions = session.categoryOptions
+                routeControlSavedMode = session.mode
+            }
+            var options: AVAudioSession.CategoryOptions = [.allowBluetooth]
+            if useSpeaker {
+                options.insert(.defaultToSpeaker)
+            }
+            try session.setCategory(.playAndRecord, mode: useSpeaker ? .default : .voiceChat, options: options)
+            try session.setActive(true)
             try session.overrideOutputAudioPort(useSpeaker ? .speaker : .none)
             let route = currentAudioRouteLabel()
             notifyListeners("audioRouteChange", data: ["route": route])

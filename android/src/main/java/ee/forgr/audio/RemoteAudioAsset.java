@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 @UnstableApi
@@ -39,6 +40,7 @@ public class RemoteAudioAsset extends AudioAsset {
     private Handler currentTimeHandler;
     private Runnable currentTimeRunnable;
     private final Map<String, String> headers;
+    private final CountDownLatch playersInitLatch = new CountDownLatch(1);
 
     public RemoteAudioAsset(NativeAudio owner, String assetId, Uri uri, int audioChannelNum, float volume, Map<String, String> headers)
         throws Exception {
@@ -69,10 +71,21 @@ public class RemoteAudioAsset extends AudioAsset {
                             }
                         } catch (Exception e) {
                             logger.error("Error initializing players", e);
+                        } finally {
+                            playersInitLatch.countDown();
                         }
                     }
                 }
             );
+    }
+
+    void awaitPlayersInitialized() throws Exception {
+        if (!playersInitLatch.await(10, TimeUnit.SECONDS)) {
+            throw new Exception("Timed out waiting for ExoPlayer initialization");
+        }
+        if (players.isEmpty()) {
+            throw new Exception("No ExoPlayer available");
+        }
     }
 
     @UnstableApi

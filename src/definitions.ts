@@ -787,7 +787,8 @@ export interface NativeAudio {
    */
   addListener(eventName: 'queueChange', listenerFunc: QueueChangeListener): Promise<PluginListenerHandle>;
   /**
-   * Fires when speaker, earpiece, or external route changes.
+   * Fires when the plugin changes routing via `setSpeaker()` or `setEarpiece()`.
+   * Does not fire for system route changes such as plugging in headphones or Bluetooth.
    *
    * @platform iOS, Android
    * @since 8.5.0

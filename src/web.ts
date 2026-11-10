@@ -14,6 +14,7 @@ import type {
   ConfigureOptions,
   GetPlaybackStateOptions,
   PlaybackStateEvent,
+  PlaybackStateValue,
   PlayOnceOptions,
   PlayOnceResult,
   PreloadOptions,
@@ -294,7 +295,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private onEnded(assetId: string): void {
     this.logDebug(`Playback ended for assetId: ${assetId}`);
     this.notifyListeners('complete', { assetId });
-    this.emitPlaybackState(assetId, 'complete', false);
+    this.emitPlaybackState(assetId, 'complete', false, 'stopped');
   }
 
   async play(options: AssetPlayOptions): Promise<void> {
@@ -549,7 +550,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     const audio = this.getAudioAsset(assetId).audio;
     const isPlaying = !audio.paused && !audio.ended;
-    const state = isPlaying ? 'playing' : audio.ended ? 'stopped' : 'paused';
+    const state = this.resolvePlaybackStateValue(audio, isPlaying);
     let duration = 0;
     if (Number.isFinite(audio.duration)) {
       duration = audio.duration;
@@ -592,6 +593,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   async clearQueue(): Promise<void> {
     this.playbackQueue = [];
     this.playbackQueueIndex = -1;
+    if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('previoustrack', null);
+      navigator.mediaSession.setActionHandler('nexttrack', null);
+    }
   }
 
   async getQueueState(): Promise<QueueState> {
@@ -810,9 +815,21 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     await this.clearQueue();
   }
 
-  private emitPlaybackState(assetId: string, reason: string, isPlaying: boolean): void {
+  private resolvePlaybackStateValue(audio: HTMLAudioElement, isPlaying: boolean): PlaybackStateValue {
+    if (isPlaying) {
+      return 'playing';
+    }
+    return audio.ended ? 'stopped' : 'paused';
+  }
+
+  private emitPlaybackState(
+    assetId: string,
+    reason: string,
+    isPlaying: boolean,
+    forcedState?: PlaybackStateValue,
+  ): void {
     const audio = this.getAudioAsset(assetId).audio;
-    const state = isPlaying ? 'playing' : audio.ended ? 'stopped' : 'paused';
+    const state = forcedState ?? this.resolvePlaybackStateValue(audio, isPlaying);
     const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
     this.notifyListeners('playbackState', {
       assetId,
@@ -891,10 +908,14 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
 
     navigator.mediaSession.setActionHandler('previoustrack', () => {
-      void this.queuePrevious();
+      this.queuePrevious().catch(() => {
+        // ignore queue boundary and empty-queue errors
+      });
     });
     navigator.mediaSession.setActionHandler('nexttrack', () => {
-      void this.queueNext();
+      this.queueNext().catch(() => {
+        // ignore queue boundary and empty-queue errors
+      });
     });
   }
 }

@@ -80,7 +80,10 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     private var interruptionObserver: Any?
 
     // Notification center support
-    private var showNotification = false
+    internal var showNotification = false
+    internal var routeControlSavedCategory: AVAudioSession.Category?
+    internal var routeControlSavedOptions: AVAudioSession.CategoryOptions?
+    internal var routeControlSavedMode: AVAudioSession.Mode?
     /// A mapping from asset IDs to their associated notification metadata for media playback.
     ///
     /// - Important: Must only be accessed within `audioQueue.sync` blocks.
@@ -509,6 +512,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
         // Use a single audio session configuration block for better atomicity
         do {
+            try restoreRouteControlSessionIfNeeded()
             // Set category first
             // Fix for issue #202: When showNotification is enabled, use .playback without
             // .mixWithOthers or .duckOthers to allow Now Playing info to display in
@@ -1619,7 +1623,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             let last = lastProgressEmitByAsset[asset.assetId] ?? 0
             if now - last >= configuredProgressInterval {
                 lastProgressEmitByAsset[asset.assetId] = now
-                let duration = asset.getDuration()
+                let rawDuration = asset.getDuration()
+                let duration = rawDuration.isFinite ? rawDuration : 0
                 notifyListeners("progress", data: [
                     "assetId": asset.assetId,
                     "position": currentTime,
