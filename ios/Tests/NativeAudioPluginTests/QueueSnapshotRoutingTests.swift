@@ -14,7 +14,7 @@ final class QueueSnapshotRoutingTests: XCTestCase {
     }
 
     override func tearDown() {
-        plugin.executeOnAudioQueue {
+        plugin.readOnAudioQueue {
             self.plugin.audioList.removeAll()
             self.plugin.playbackQueueIds = []
             self.plugin.playbackQueueItemById = [:]
@@ -24,19 +24,14 @@ final class QueueSnapshotRoutingTests: XCTestCase {
     }
 
     func testRefreshQueueRemoteCommands_disabledWithoutShowNotification() {
-        let expectation = XCTestExpectation(description: "refresh remote commands")
-
-        plugin.executeOnAudioQueue {
+        plugin.readOnAudioQueue {
             self.plugin.showNotification = false
             self.plugin.playbackQueueIds = ["a", "b"]
             self.plugin.refreshQueueRemoteCommands()
             let commandCenter = MPRemoteCommandCenter.shared()
             XCTAssertFalse(commandCenter.nextTrackCommand.isEnabled)
             XCTAssertFalse(commandCenter.previousTrackCommand.isEnabled)
-            expectation.fulfill()
         }
-
-        wait(for: [expectation], timeout: 5.0)
     }
 
     func testRemoteAssetGetPlaybackRate_returnsRequestedRateWhileIdle() {
@@ -54,26 +49,24 @@ final class QueueSnapshotRoutingTests: XCTestCase {
                 withHeaders: nil
             )
             asset.setRate(rate: NSNumber(value: 1.75))
-            XCTAssertEqual(asset.getPlaybackRate(), 1.75, accuracy: 0.001)
-            expectation.fulfill()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                XCTAssertEqual(asset.getPlaybackRate(), 1.75, accuracy: 0.001)
+                expectation.fulfill()
+            }
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        wait(for: [expectation], timeout: 3.0)
     }
 
     func testBuildQueueStateDictionary_reflectsQueueSelection() {
-        let expectation = XCTestExpectation(description: "queue state dictionary")
-
-        plugin.executeOnAudioQueue {
+        let state = plugin.readOnAudioQueue { () -> [String: Any] in
             self.plugin.playbackQueueIds = ["one", "two"]
             self.plugin.playbackQueueIndex = 1
-            let state = self.plugin.buildQueueStateDictionary()
-            XCTAssertEqual(state["count"] as? Int, 2)
-            XCTAssertEqual(state["index"] as? Int, 1)
-            XCTAssertEqual(state["assetId"] as? String, "two")
-            expectation.fulfill()
+            return self.plugin.buildQueueStateDictionary()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        XCTAssertEqual(state["count"] as? Int, 2)
+        XCTAssertEqual(state["index"] as? Int, 1)
+        XCTAssertEqual(state["assetId"] as? String, "two")
     }
 }
