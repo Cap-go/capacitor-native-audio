@@ -8,7 +8,7 @@ enum MyError: Error {
     case runtimeError(String)
 }
 
-private enum PlaybackStateValue: String {
+internal enum PlaybackStateValue: String {
     case playing
     case paused
     case stopped

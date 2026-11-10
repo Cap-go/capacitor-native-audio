@@ -71,6 +71,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -2247,7 +2248,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             try {
                 playbackQueueItems.clear();
                 for (int i = 0; i < items.length(); i++) {
-                    JSObject item = items.getJSObject(i);
+                    JSObject item = JSObject.fromJSONObject(items.getJSONObject(i));
                     if (item != null && isStringValid(item.getString(ASSET_ID))) {
                         playbackQueueItems.add(item);
                     }
@@ -2409,9 +2410,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             return;
         }
 
-        boolean isLocalUrl = item.getBoolean("isUrl", false);
-        float volume = (float) item.getDouble(VOLUME, 1.0);
-        int audioChannelNum = item.getInt(AUDIO_CHANNEL_NUM, 1);
+        boolean isLocalUrl = item.optBoolean("isUrl", false);
+        float volume = (float) item.optDouble(VOLUME, 1.0);
+        int audioChannelNum = item.optInt(AUDIO_CHANNEL_NUM, 1);
         JSObject headersObj = item.getJSObject("headers");
 
         JSObject metadata = item.getJSObject(NOTIFICATION_METADATA);

@@ -16,6 +16,28 @@ Play sound effects, music and streams with native audio engines in your Capacito
   <img src="https://raw.githubusercontent.com/Cap-go/capacitor-native-audio/main/assets/github-social-preview.png" alt="@capgo/capacitor-native-audio for Capacitor apps" width="300" />
 </p>
 
+## Why pick Native Audio?
+
+**`@capgo/capacitor-native-audio`** is the free, native Capacitor 8 audio stack for sound effects, music, podcasts, and guided audio in one plugin. Keep your existing `preload` / `play` workflow and add lock screen playback, queues, and UI sync without switching packages.
+
+Full reference: [capgo.app/docs/plugins/native-audio/](https://capgo.app/docs/plugins/native-audio/)
+
+### Playlist queue with lock screen skip
+
+`setQueue()`, `queueNext()`, `queuePrevious()`, and `queueSelect()` drive multi-track sessions. iOS and Android wire skip actions to the lock screen and media notification. See [queue docs](https://capgo.app/docs/plugins/native-audio/) and repo `docs/PLAYLIST.md`.
+
+### Playback snapshot
+
+`getPlaybackState()` returns asset id, play/pause/stop, position, and duration when a screen mounts after playback already started. Pairs with `playbackState` events from transport and lock screen controls.
+
+### Progress events
+
+`configure({ progressInterval })` sets how often `progress` fires for scrubbers and chapters. `currentTime` still updates about every 100ms for precise UI.
+
+### Audio routing
+
+`setSpeaker()`, `setEarpiece()`, and `getAudioRoute()` on iOS and Android for voice-heavy apps. `audioRouteChange` keeps UI aligned when output switches to headphones or Bluetooth.
+
 ## Key features
 
 - **Preload and play**: `preload()`, `play()`, `playOnce()`, `pause()`, `resume()`, `loop()` and `stop()`.
