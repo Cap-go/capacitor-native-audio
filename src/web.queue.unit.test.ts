@@ -190,6 +190,19 @@ describe('NativeAudio web queue and playback state', () => {
     expect(snapshot.state).toBe('playing');
   }, 10000);
 
+  it('getAudioRoute_returnsEarpieceAfterSetEarpiece', async () => {
+    await NativeAudio.setEarpiece();
+    const { route } = await NativeAudio.getAudioRoute();
+    expect(route).toBe('earpiece');
+  });
+
+  it('getAudioRoute_returnsSpeakerAfterSetSpeaker', async () => {
+    await NativeAudio.setEarpiece();
+    await NativeAudio.setSpeaker();
+    const { route } = await NativeAudio.getAudioRoute();
+    expect(route).toBe('speaker');
+  });
+
   it('unload_clearsTrackedPlaybackStateSnapshot', async () => {
     const url = blobAudioUrl();
     await NativeAudio.preload({ assetId: 'unload-snap', assetPath: url, isUrl: true });

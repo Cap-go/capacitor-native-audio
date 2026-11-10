@@ -1,5 +1,7 @@
 package ee.forgr.audio;
 
+import static ee.forgr.audio.Constant.ASSET_ID;
+import static ee.forgr.audio.Constant.ASSET_PATH;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -8,8 +10,11 @@ import android.content.Context;
 import android.media.AudioManager;
 import android.support.v4.media.session.PlaybackStateCompat;
 import androidx.test.core.app.ApplicationProvider;
+import com.getcapacitor.JSObject;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -81,5 +86,39 @@ public class QueueSnapshotRoutingUnitTest {
         Method resolveAudioRoute = NativeAudio.class.getDeclaredMethod("resolveAudioRoute");
         resolveAudioRoute.setAccessible(true);
         assertEquals("earpiece", resolveAudioRoute.invoke(plugin));
+    }
+
+    @Test
+    public void setQueueStaging_preloadFailureLeavesCommittedQueueUntouched() throws Exception {
+        NativeAudio plugin = new NativeAudio();
+        Field itemsField = NativeAudio.class.getDeclaredField("playbackQueueItems");
+        Field indexField = NativeAudio.class.getDeclaredField("playbackQueueIndex");
+        itemsField.setAccessible(true);
+        indexField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<JSObject> items = (List<JSObject>) itemsField.get(plugin);
+        JSObject kept = new JSObject();
+        kept.put(ASSET_ID, "kept");
+        kept.put(ASSET_PATH, "https://example.com/kept.mp3");
+        items.add(kept);
+        indexField.setInt(plugin, 0);
+
+        JSObject failingItem = new JSObject();
+        failingItem.put(ASSET_ID, "fail-preload");
+        failingItem.put(ASSET_PATH, "__unit_test_missing_asset__");
+        failingItem.put("isUrl", true);
+
+        Method preloadQueueItem = NativeAudio.class.getDeclaredMethod("preloadQueueItem", JSObject.class);
+        preloadQueueItem.setAccessible(true);
+        boolean preloadFailed = false;
+        try {
+            preloadQueueItem.invoke(plugin, failingItem);
+        } catch (InvocationTargetException e) {
+            preloadFailed = true;
+        }
+        assertTrue(preloadFailed);
+        assertEquals(1, items.size());
+        assertEquals("kept", items.get(0).getString(ASSET_ID));
+        assertEquals(0, indexField.getInt(plugin));
     }
 }
