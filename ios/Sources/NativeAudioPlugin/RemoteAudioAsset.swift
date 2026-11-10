@@ -297,6 +297,14 @@ public class RemoteAudioAsset: AudioAsset {
         }
     }
 
+    override func getPlaybackRate() -> Float {
+        var result = Constant.DefaultRate
+        owner?.readOnAudioQueue {
+            result = players.first?.rate ?? Constant.DefaultRate
+        }
+        return result
+    }
+
     override func isPlaying() -> Bool {
         var result = false
         owner?.executeOnAudioQueue { [weak self] in

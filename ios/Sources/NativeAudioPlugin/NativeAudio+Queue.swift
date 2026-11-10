@@ -213,6 +213,11 @@ extension NativeAudio {
     }
 
     private func playQueueAsset(assetId: String, reason: String) {
+        if let previousId = currentlyPlayingAssetId,
+           previousId != assetId,
+           let previous = audioList[previousId] as? AudioAsset {
+            previous.stop()
+        }
         guard let asset = audioList[assetId] as? AudioAsset else { return }
         currentlyPlayingAssetId = assetId
         asset.play(time: 0)
@@ -290,57 +295,65 @@ extension NativeAudio {
             }
         }
 
-        audioQueue.sync(flags: .barrier) {
-            if self.audioList[assetId] != nil {
-                completion(true)
-                return
-            }
+        if audioList[assetId] != nil {
+            completion(true)
+            return
+        }
 
-            if let url = URL(string: assetPath), url.scheme != nil {
-                if url.isFileURL {
-                    let audioAsset = AudioAsset(
-                        owner: self,
-                        withAssetId: assetId,
-                        withPath: url.path,
-                        withChannels: Constant.DefaultChannels,
-                        withVolume: volume
-                    )
-                    self.audioList[assetId] = audioAsset
-                    completion(true)
-                    return
+        var headers: [String: String]?
+        if let headersObj = item["headers"] as? [String: Any] {
+            headers = [:]
+            for (key, value) in headersObj {
+                if let stringValue = value as? String {
+                    headers?[key] = stringValue
                 }
+            }
+        }
 
-                let remoteAudioAsset = RemoteAudioAsset(
+        if let url = URL(string: assetPath), url.scheme != nil {
+            if url.isFileURL {
+                let audioAsset = AudioAsset(
                     owner: self,
                     withAssetId: assetId,
-                    withPath: assetPath,
+                    withPath: url.path,
                     withChannels: Constant.DefaultChannels,
-                    withVolume: volume,
-                    withHeaders: nil
+                    withVolume: volume
                 )
-                self.audioList[assetId] = remoteAudioAsset
+                audioList[assetId] = audioAsset
                 completion(true)
                 return
             }
 
-            let publicPath = assetPath.starts(with: "public/") ? assetPath : "public/" + assetPath
-            let assetPathSplit = publicPath.components(separatedBy: ".")
-            guard assetPathSplit.count >= 2,
-                  let basePath = Bundle.main.path(forResource: assetPathSplit[0], ofType: assetPathSplit[1]) else {
-                completion(false)
-                return
-            }
-
-            let audioAsset = AudioAsset(
+            let remoteAudioAsset = RemoteAudioAsset(
                 owner: self,
                 withAssetId: assetId,
-                withPath: basePath,
+                withPath: assetPath,
                 withChannels: Constant.DefaultChannels,
-                withVolume: volume
+                withVolume: volume,
+                withHeaders: headers
             )
-            self.audioList[assetId] = audioAsset
+            audioList[assetId] = remoteAudioAsset
             completion(true)
+            return
         }
+
+        let publicPath = assetPath.starts(with: "public/") ? assetPath : "public/" + assetPath
+        let assetPathSplit = publicPath.components(separatedBy: ".")
+        guard assetPathSplit.count >= 2,
+              let basePath = Bundle.main.path(forResource: assetPathSplit[0], ofType: assetPathSplit[1]) else {
+            completion(false)
+            return
+        }
+
+        let audioAsset = AudioAsset(
+            owner: self,
+            withAssetId: assetId,
+            withPath: basePath,
+            withChannels: Constant.DefaultChannels,
+            withVolume: volume
+        )
+        audioList[assetId] = audioAsset
+        completion(true)
     }
 
     private func setAudioRouteOverride(useSpeaker: Bool, call: CAPPluginCall) {

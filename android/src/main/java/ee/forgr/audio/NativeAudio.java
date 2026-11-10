@@ -2393,6 +2393,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         if (!audioAssetList.containsKey(assetId)) {
             throw new Exception("Queue asset is not loaded");
         }
+        if (isStringValid(currentlyPlayingAssetId) && !currentlyPlayingAssetId.equals(assetId)) {
+            stopAudio(currentlyPlayingAssetId, false, 0);
+        }
         AudioAsset asset = audioAssetList.get(assetId);
         currentlyPlayingAssetId = assetId;
         asset.play(0);

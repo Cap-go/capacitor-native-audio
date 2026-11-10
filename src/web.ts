@@ -848,6 +848,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   private async selectQueueIndex(index: number, reason: string): Promise<QueueState> {
     const item = this.playbackQueue[index];
+    const previousId = this.getCurrentQueueAssetId();
+    if (previousId && previousId !== item.assetId && NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(previousId)) {
+      await this.stop({ assetId: previousId });
+    }
     if (!NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(item.assetId)) {
       await this.preload(item);
     }
