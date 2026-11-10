@@ -105,6 +105,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private final Map<String, Runnable> pendingPlayRunnables = new ConcurrentHashMap<>();
     private final Map<String, JSObject> audioData = new ConcurrentHashMap<>();
     private final Map<String, Integer> playbackStateByAssetId = new ConcurrentHashMap<>();
+    private final List<JSObject> playbackQueueItems = new ArrayList<>();
+    private int playbackQueueIndex = -1;
+    private double configuredProgressIntervalSec = 0.5d;
+    private final Map<String, Long> lastProgressEmitMsByAsset = new ConcurrentHashMap<>();
 
     // Notification center support
     private boolean showNotification = false;
@@ -271,6 +275,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         boolean background = call.getBoolean("background", false);
         this.showNotification = call.getBoolean(SHOW_NOTIFICATION, false);
         this.backgroundPlayback = call.getBoolean("backgroundPlayback", false);
+        Double progressInterval = call.getDouble("progressInterval");
+        if (progressInterval != null && progressInterval > 0) {
+            configuredProgressIntervalSec = progressInterval;
+        }
 
         try {
             if (focus) {
@@ -1061,6 +1069,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         ret.put("assetId", assetId);
         notifyListeners("currentTime", ret);
 
+        long now = System.currentTimeMillis();
+        Long last = lastProgressEmitMsByAsset.get(assetId);
+        if (last == null || now - last >= configuredProgressIntervalSec * 1000L) {
+            lastProgressEmitMsByAsset.put(assetId, now);
+            JSObject progress = new JSObject();
+            progress.put("assetId", assetId);
+            progress.put("position", roundedTime);
+            AudioAsset asset = audioAssetList.get(assetId);
+            double duration = asset != null ? asset.getDuration() : 0;
+            progress.put("duration", duration);
+            notifyListeners("progress", progress);
+        }
+
         JSObject data = getAudioAssetData(assetId);
         if (data.optBoolean("fadeOut", false)) {
             double fadeOutStartTime = data.optDouble("fadeOutStartTime", -1);
@@ -1565,7 +1586,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 PlaybackStateCompat.ACTION_STOP |
                 PlaybackStateCompat.ACTION_REWIND |
                 PlaybackStateCompat.ACTION_FAST_FORWARD |
-                PlaybackStateCompat.ACTION_SEEK_TO
+                PlaybackStateCompat.ACTION_SEEK_TO |
+                PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
+                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
         );
         mediaSession.setPlaybackState(stateBuilder.build());
 
@@ -1649,6 +1672,16 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                         notifyPlaybackState(audioId, "remoteSeek");
                         Log.d(TAG, "Seek to: " + positionInSeconds);
                     });
+                }
+
+                @Override
+                public void onSkipToNext() {
+                    queueNavigate(1, "remoteNext");
+                }
+
+                @Override
+                public void onSkipToPrevious() {
+                    queueNavigate(-1, "remotePrevious");
                 }
             }
         );
@@ -2144,5 +2177,304 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     private interface MediaSessionAction {
         void run(String audioId, AudioAsset asset) throws Exception;
+    }
+
+    @PluginMethod
+    public void getPlaybackState(PluginCall call) {
+        String requestedId = call.getString(ASSET_ID);
+        String audioId = requestedId != null ? requestedId : currentlyPlayingAssetId;
+        if (!isStringValid(audioId) && playbackQueueIndex >= 0 && playbackQueueIndex < playbackQueueItems.size()) {
+            audioId = playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID);
+        }
+
+        if (!isStringValid(audioId) || !audioAssetList.containsKey(audioId)) {
+            JSObject empty = new JSObject();
+            empty.put("assetId", "");
+            empty.put("state", "stopped");
+            empty.put("reason", "snapshot");
+            empty.put("isPlaying", false);
+            empty.put("currentTime", 0);
+            empty.put("duration", 0);
+            call.resolve(empty);
+            return;
+        }
+
+        try {
+            AudioAsset asset = audioAssetList.get(audioId);
+            boolean playing = asset.isPlaying();
+            JSObject ret = new JSObject();
+            ret.put("assetId", audioId);
+            ret.put("state", playing ? "playing" : "paused");
+            ret.put("reason", "snapshot");
+            ret.put("isPlaying", playing);
+            ret.put("currentTime", asset.getCurrentPosition());
+            ret.put("duration", asset.getDuration());
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to read playback state: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void getRate(PluginCall call) {
+        String audioId = call.getString(ASSET_ID);
+        if (!isStringValid(audioId) || !audioAssetList.containsKey(audioId)) {
+            call.reject(ERROR_AUDIO_ASSET_MISSING);
+            return;
+        }
+        try {
+            AudioAsset asset = audioAssetList.get(audioId);
+            JSObject ret = new JSObject();
+            ret.put("rate", asset.getPlaybackRate());
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to read rate: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void setQueue(final PluginCall call) {
+        com.getcapacitor.JSArray items = call.getArray("items");
+        if (items == null || items.length() == 0) {
+            call.reject("Queue must include at least one item");
+            return;
+        }
+
+        final int startIndex = Math.max(0, call.getInt("startIndex", 0));
+        final boolean autoPlay = Boolean.TRUE.equals(call.getBoolean("autoPlay", false));
+
+        new Thread(() -> {
+            try {
+                playbackQueueItems.clear();
+                for (int i = 0; i < items.length(); i++) {
+                    JSObject item = items.getJSObject(i);
+                    if (item != null && isStringValid(item.getString(ASSET_ID))) {
+                        playbackQueueItems.add(item);
+                    }
+                }
+
+                if (playbackQueueItems.isEmpty()) {
+                    call.reject("No valid queue items");
+                    return;
+                }
+
+                int cappedStart = Math.min(startIndex, playbackQueueItems.size() - 1);
+                JSObject current = playbackQueueItems.get(cappedStart);
+                preloadQueueItem(current);
+
+                playbackQueueIndex = cappedStart;
+                String assetId = current.getString(ASSET_ID);
+                if (autoPlay) {
+                    playQueueAsset(assetId, "setQueue");
+                } else {
+                    notifyQueueChange(assetId, playbackQueueIndex, "setQueue");
+                }
+                call.resolve(buildQueueState());
+            } catch (Exception e) {
+                call.reject("Failed to set queue: " + e.getMessage());
+            }
+        })
+            .start();
+    }
+
+    @PluginMethod
+    public void clearQueue(PluginCall call) {
+        playbackQueueItems.clear();
+        playbackQueueIndex = -1;
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void getQueueState(PluginCall call) {
+        call.resolve(buildQueueState());
+    }
+
+    @PluginMethod
+    public void queueNext(PluginCall call) {
+        queueNavigateWithCall(1, "next", call);
+    }
+
+    @PluginMethod
+    public void queuePrevious(PluginCall call) {
+        queueNavigateWithCall(-1, "previous", call);
+    }
+
+    @PluginMethod
+    public void queueSelect(PluginCall call) {
+        String assetId = call.getString(ASSET_ID);
+        if (!isStringValid(assetId)) {
+            call.reject(ERROR_AUDIO_ID_MISSING);
+            return;
+        }
+        int index = -1;
+        for (int i = 0; i < playbackQueueItems.size(); i++) {
+            if (assetId.equals(playbackQueueItems.get(i).getString(ASSET_ID))) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            call.reject("Asset is not in the queue");
+            return;
+        }
+        selectQueueIndex(index, "select", call);
+    }
+
+    @PluginMethod
+    public void setSpeaker(PluginCall call) {
+        if (audioManager != null) {
+            audioManager.setSpeakerphoneOn(true);
+            audioManager.setMode(AudioManager.MODE_NORMAL);
+        }
+        notifyAudioRouteChange(resolveAudioRoute());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setEarpiece(PluginCall call) {
+        if (audioManager != null) {
+            audioManager.setSpeakerphoneOn(false);
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        }
+        notifyAudioRouteChange(resolveAudioRoute());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void getAudioRoute(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("route", resolveAudioRoute());
+        call.resolve(ret);
+    }
+
+    private void queueNavigateWithCall(int delta, String reason, PluginCall call) {
+        if (playbackQueueItems.isEmpty()) {
+            call.reject("Queue is empty");
+            return;
+        }
+        int nextIndex = playbackQueueIndex + delta;
+        if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
+            call.reject("Queue boundary reached");
+            return;
+        }
+        selectQueueIndex(nextIndex, reason, call);
+    }
+
+    private void queueNavigate(int delta, String reason) {
+        if (playbackQueueItems.isEmpty()) {
+            return;
+        }
+        int nextIndex = playbackQueueIndex + delta;
+        if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
+            return;
+        }
+        selectQueueIndex(nextIndex, reason, null);
+    }
+
+    private void selectQueueIndex(int index, String reason, PluginCall call) {
+        try {
+            JSObject item = playbackQueueItems.get(index);
+            preloadQueueItem(item);
+            playbackQueueIndex = index;
+            String assetId = item.getString(ASSET_ID);
+            playQueueAsset(assetId, reason);
+            if (call != null) {
+                call.resolve(buildQueueState());
+            }
+        } catch (Exception e) {
+            if (call != null) {
+                call.reject("Failed to move queue: " + e.getMessage());
+            }
+        }
+    }
+
+    private void playQueueAsset(String assetId, String reason) throws Exception {
+        if (!audioAssetList.containsKey(assetId)) {
+            throw new Exception("Queue asset is not loaded");
+        }
+        AudioAsset asset = audioAssetList.get(assetId);
+        currentlyPlayingAssetId = assetId;
+        asset.play(0);
+        notifyPlaybackState(assetId, reason);
+        notifyQueueChange(assetId, playbackQueueIndex, reason);
+        updateNotification(assetId);
+    }
+
+    private void preloadQueueItem(JSObject item) throws Exception {
+        initSoundPool();
+
+        String assetId = item.getString(ASSET_ID);
+        String assetPath = item.getString(ASSET_PATH);
+        if (!isStringValid(assetId) || !isStringValid(assetPath) || audioAssetList.containsKey(assetId)) {
+            return;
+        }
+
+        boolean isLocalUrl = item.getBoolean("isUrl", false);
+        float volume = (float) item.getDouble(VOLUME, 1.0);
+        int audioChannelNum = item.getInt(AUDIO_CHANNEL_NUM, 1);
+        JSObject headersObj = item.getJSObject("headers");
+
+        JSObject metadata = item.getJSObject(NOTIFICATION_METADATA);
+        if (metadata != null) {
+            Map<String, String> metadataMap = new HashMap<>();
+            if (metadata.has("title")) metadataMap.put("title", metadata.getString("title"));
+            if (metadata.has("artist")) metadataMap.put("artist", metadata.getString("artist"));
+            if (metadata.has("album")) metadataMap.put("album", metadata.getString("album"));
+            if (metadata.has("artworkUrl")) metadataMap.put("artworkUrl", metadata.getString("artworkUrl"));
+            if (!metadataMap.isEmpty()) {
+                notificationMetadataMap.put(assetId, metadataMap);
+            }
+        }
+
+        AudioAsset asset = loadAudioAsset(assetId, assetPath, isLocalUrl, volume, audioChannelNum, headersObj);
+        if (asset == null) {
+            throw new Exception("Failed to load queue asset");
+        }
+        asset.setCompletionListener(this::dispatchComplete);
+        audioAssetList.put(assetId, asset);
+    }
+
+    private JSObject buildQueueState() {
+        JSObject state = new JSObject();
+        state.put("count", playbackQueueItems.size());
+        state.put("index", playbackQueueIndex);
+        com.getcapacitor.JSArray ids = new com.getcapacitor.JSArray();
+        for (JSObject item : playbackQueueItems) {
+            ids.put(item.getString(ASSET_ID));
+        }
+        state.put("assetIds", ids);
+        if (playbackQueueIndex >= 0 && playbackQueueIndex < playbackQueueItems.size()) {
+            state.put("assetId", playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID));
+        } else {
+            state.put("assetId", "");
+        }
+        return state;
+    }
+
+    private void notifyQueueChange(String assetId, int index, String reason) {
+        JSObject event = new JSObject();
+        event.put("assetId", assetId);
+        event.put("index", index);
+        event.put("reason", reason);
+        notifyListeners("queueChange", event);
+    }
+
+    private String resolveAudioRoute() {
+        if (audioManager == null) {
+            return "speaker";
+        }
+        if (audioManager.isBluetoothA2dpOn() || audioManager.isWiredHeadsetOn()) {
+            return "external";
+        }
+        if (audioManager.isSpeakerphoneOn()) {
+            return "speaker";
+        }
+        return "earpiece";
+    }
+
+    private void notifyAudioRouteChange(String route) {
+        JSObject event = new JSObject();
+        event.put("route", route);
+        notifyListeners("audioRouteChange", event);
     }
 }
