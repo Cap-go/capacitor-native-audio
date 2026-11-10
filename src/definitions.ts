@@ -736,7 +736,11 @@ export interface NativeAudio {
   setEarpiece(): Promise<void>;
 
   /**
-   * @platform iOS, Android
+   * Returns the current audio output route label.
+   * On iOS and Android this reflects the device route (speaker, earpiece, or external).
+   * On Web this returns the last route requested via `setSpeaker()` or `setEarpiece()`
+   * and does not change the real browser output device.
+   *
    * @since 8.5.0
    */
   getAudioRoute(): Promise<{ route: AudioRouteValue }>;
