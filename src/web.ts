@@ -63,6 +63,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private progressIntervalSec = DEFAULT_PROGRESS_INTERVAL_SEC;
   private activeAssetId: string | null = null;
   private snapshotPlaybackStateByAsset = new Map<string, PlaybackStateValue>();
+  private currentAudioRoute: AudioRouteValue = 'speaker';
   private playbackQueue: QueueItem[] = [];
   private playbackQueueIndex = -1;
   private readonly zeroVolume = 0.0001;
@@ -92,7 +93,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     const audio: HTMLAudioElement = this.getAudioAsset(assetId).audio;
     this.startCurrentTimeUpdates(assetId);
     if (audio.paused) {
-      return audio.play();
+      await audio.play();
+      this.activeAssetId = assetId;
+      this.emitPlaybackState(assetId, 'resume', true);
     }
   }
 
@@ -397,7 +400,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.reset(audio);
     audio.loop = true;
     this.startCurrentTimeUpdates(options.assetId);
-    return audio.play();
+    await audio.play();
+    this.activeAssetId = options.assetId;
+    this.emitPlaybackState(options.assetId, 'loop', true);
   }
 
   async stop(options: AssetStopOptions): Promise<void> {
@@ -470,6 +475,10 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.delete(options.assetId);
     NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.delete(options.assetId);
     NativeAudioWeb.AUDIO_DATA_MAP.delete(options.assetId);
+    this.snapshotPlaybackStateByAsset.delete(options.assetId);
+    if (this.activeAssetId === options.assetId) {
+      this.activeAssetId = null;
+    }
     this.cleanupAudioContext(audio);
   }
 
@@ -551,8 +560,13 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     const audio = this.getAudioAsset(assetId).audio;
     const isPlaying = !audio.paused && !audio.ended;
-    const tracked = this.snapshotPlaybackStateByAsset.get(assetId);
-    const state = tracked ?? this.resolvePlaybackStateValue(audio, isPlaying);
+    let state: PlaybackStateValue;
+    if (isPlaying) {
+      state = 'playing';
+    } else {
+      const tracked = this.snapshotPlaybackStateByAsset.get(assetId);
+      state = tracked ?? this.resolvePlaybackStateValue(audio, isPlaying);
+    }
     let duration = 0;
     if (Number.isFinite(audio.duration)) {
       duration = audio.duration;
@@ -623,15 +637,17 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   }
 
   async setSpeaker(): Promise<void> {
+    this.currentAudioRoute = 'speaker';
     this.notifyAudioRouteChange('speaker');
   }
 
   async setEarpiece(): Promise<void> {
+    this.currentAudioRoute = 'earpiece';
     this.notifyAudioRouteChange('earpiece');
   }
 
   async getAudioRoute(): Promise<{ route: AudioRouteValue }> {
-    return { route: 'speaker' };
+    return { route: this.currentAudioRoute };
   }
 
   async isPlaying(options: Assets): Promise<{ isPlaying: boolean }> {

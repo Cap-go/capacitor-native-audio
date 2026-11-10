@@ -158,7 +158,9 @@ describe('NativeAudio web queue and playback state', () => {
     await NativeAudio.play({ assetId: 'adv1', time: 0 });
 
     let autoAdvanceCalls = 0;
+    let completeEvents = 0;
     const completeHandle = await NativeAudio.addListener('complete', async ({ assetId }) => {
+      completeEvents += 1;
       const { assetId: selectedId } = await NativeAudio.getQueueState();
       if (assetId === selectedId) {
         autoAdvanceCalls += 1;
@@ -171,8 +173,32 @@ describe('NativeAudio web queue and playback state', () => {
     const state = await NativeAudio.getQueueState();
     expect(state.index).toBe(1);
     expect(state.assetId).toBe('adv2');
+    expect(completeEvents).toBe(1);
     expect(autoAdvanceCalls).toBe(0);
     await completeHandle.remove();
+  }, 10000);
+
+  it('getPlaybackState_afterResume_reportsPlaying', async () => {
+    const url = blobAudioUrl();
+    await NativeAudio.preload({ assetId: 'resume-snap', assetPath: url, isUrl: true });
+    await NativeAudio.play({ assetId: 'resume-snap', time: 0 });
+    await NativeAudio.pause({ assetId: 'resume-snap' });
+    await NativeAudio.resume({ assetId: 'resume-snap' });
+
+    const snapshot = await NativeAudio.getPlaybackState({ assetId: 'resume-snap' });
+    expect(snapshot.isPlaying).toBe(true);
+    expect(snapshot.state).toBe('playing');
+  }, 10000);
+
+  it('unload_clearsTrackedPlaybackStateSnapshot', async () => {
+    const url = blobAudioUrl();
+    await NativeAudio.preload({ assetId: 'unload-snap', assetPath: url, isUrl: true });
+    await NativeAudio.play({ assetId: 'unload-snap', time: 0 });
+    await NativeAudio.unload({ assetId: 'unload-snap' });
+
+    const snapshot = await NativeAudio.getPlaybackState({ assetId: 'unload-snap' });
+    expect(snapshot.assetId).toBe('');
+    expect(snapshot.state).toBe('stopped');
   }, 10000);
 
   it('queueNext_atBoundaryRejectsWithoutUnhandledRejection', async () => {

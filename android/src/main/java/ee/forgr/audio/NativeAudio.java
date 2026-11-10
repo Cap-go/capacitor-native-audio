@@ -106,6 +106,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private final Map<String, Runnable> pendingPlayRunnables = new ConcurrentHashMap<>();
     private final Map<String, JSObject> audioData = new ConcurrentHashMap<>();
     private final Map<String, Integer> playbackStateByAssetId = new ConcurrentHashMap<>();
+    private final Object playbackQueueLock = new Object();
     private final List<JSObject> playbackQueueItems = new ArrayList<>();
     private int playbackQueueIndex = -1;
     private double configuredProgressIntervalSec = 0.5d;
@@ -1571,8 +1572,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 originalAudioMode = AudioManager.MODE_INVALID;
             }
 
-            playbackQueueItems.clear();
-            playbackQueueIndex = -1;
+            synchronized (playbackQueueLock) {
+                playbackQueueItems.clear();
+                playbackQueueIndex = -1;
+            }
             refreshQueueMediaSessionActions();
 
             call.resolve();
@@ -1849,8 +1852,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             PlaybackStateCompat.ACTION_REWIND |
             PlaybackStateCompat.ACTION_FAST_FORWARD |
             PlaybackStateCompat.ACTION_SEEK_TO;
-        if (showNotification && playbackQueueItems.size() > 1) {
-            actions |= PlaybackStateCompat.ACTION_SKIP_TO_NEXT | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+        synchronized (playbackQueueLock) {
+            if (showNotification && playbackQueueItems.size() > 1) {
+                actions |= PlaybackStateCompat.ACTION_SKIP_TO_NEXT | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS;
+            }
         }
         return actions;
     }
@@ -2199,8 +2204,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     public void getPlaybackState(PluginCall call) {
         String requestedId = call.getString(ASSET_ID);
         String audioId = requestedId != null ? requestedId : currentlyPlayingAssetId;
-        if (!isStringValid(audioId) && playbackQueueIndex >= 0 && playbackQueueIndex < playbackQueueItems.size()) {
-            audioId = playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID);
+        if (!isStringValid(audioId)) {
+            synchronized (playbackQueueLock) {
+                if (playbackQueueIndex >= 0 && playbackQueueIndex < playbackQueueItems.size()) {
+                    audioId = playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID);
+                }
+            }
         }
 
         if (!isStringValid(audioId) || !audioAssetList.containsKey(audioId)) {
@@ -2260,24 +2269,29 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         final boolean autoPlay = Boolean.TRUE.equals(call.getBoolean("autoPlay", false));
 
         try {
-            playbackQueueItems.clear();
+            List<JSObject> nextQueue = new ArrayList<>();
             for (int i = 0; i < items.length(); i++) {
                 JSObject item = JSObject.fromJSONObject(items.getJSONObject(i));
                 if (item != null && queueItemIsValid(item.getString(ASSET_ID), item.getString(ASSET_PATH))) {
-                    playbackQueueItems.add(item);
+                    nextQueue.add(item);
                 }
             }
 
-            if (playbackQueueItems.isEmpty()) {
+            if (nextQueue.isEmpty()) {
                 call.reject("No valid queue items");
                 return;
             }
 
-            int cappedStart = Math.min(startIndex, playbackQueueItems.size() - 1);
-            JSObject current = playbackQueueItems.get(cappedStart);
+            int cappedStart = Math.min(startIndex, nextQueue.size() - 1);
+            JSObject current = nextQueue.get(cappedStart);
             preloadQueueItem(current);
 
-            playbackQueueIndex = cappedStart;
+            final int committedIndex = cappedStart;
+            synchronized (playbackQueueLock) {
+                playbackQueueItems.clear();
+                playbackQueueItems.addAll(nextQueue);
+                playbackQueueIndex = committedIndex;
+            }
             refreshQueueMediaSessionActions();
             String assetId = current.getString(ASSET_ID);
             if (autoPlay) {
@@ -2293,8 +2307,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
     @PluginMethod
     public void clearQueue(PluginCall call) {
-        playbackQueueItems.clear();
-        playbackQueueIndex = -1;
+        synchronized (playbackQueueLock) {
+            playbackQueueItems.clear();
+            playbackQueueIndex = -1;
+        }
         refreshQueueMediaSessionActions();
         call.resolve();
     }
@@ -2322,10 +2338,12 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             return;
         }
         int index = -1;
-        for (int i = 0; i < playbackQueueItems.size(); i++) {
-            if (assetId.equals(playbackQueueItems.get(i).getString(ASSET_ID))) {
-                index = i;
-                break;
+        synchronized (playbackQueueLock) {
+            for (int i = 0; i < playbackQueueItems.size(); i++) {
+                if (assetId.equals(playbackQueueItems.get(i).getString(ASSET_ID))) {
+                    index = i;
+                    break;
+                }
             }
         }
         if (index < 0) {
@@ -2363,34 +2381,45 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     }
 
     private void queueNavigateWithCall(int delta, String reason, PluginCall call) {
-        if (playbackQueueItems.isEmpty()) {
-            call.reject("Queue is empty");
-            return;
-        }
-        int nextIndex = playbackQueueIndex + delta;
-        if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
-            call.reject("Queue boundary reached");
-            return;
+        final int nextIndex;
+        synchronized (playbackQueueLock) {
+            if (playbackQueueItems.isEmpty()) {
+                call.reject("Queue is empty");
+                return;
+            }
+            nextIndex = playbackQueueIndex + delta;
+            if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
+                call.reject("Queue boundary reached");
+                return;
+            }
         }
         selectQueueIndex(nextIndex, reason, call);
     }
 
     private void queueNavigate(int delta, String reason) {
-        if (playbackQueueItems.isEmpty()) {
-            return;
-        }
-        int nextIndex = playbackQueueIndex + delta;
-        if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
-            return;
+        final int nextIndex;
+        synchronized (playbackQueueLock) {
+            if (playbackQueueItems.isEmpty()) {
+                return;
+            }
+            nextIndex = playbackQueueIndex + delta;
+            if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
+                return;
+            }
         }
         selectQueueIndex(nextIndex, reason, null);
     }
 
     private void selectQueueIndex(int index, String reason, PluginCall call) {
         try {
-            JSObject item = playbackQueueItems.get(index);
+            JSObject item;
+            synchronized (playbackQueueLock) {
+                item = playbackQueueItems.get(index);
+            }
             preloadQueueItem(item);
-            playbackQueueIndex = index;
+            synchronized (playbackQueueLock) {
+                playbackQueueIndex = index;
+            }
             String assetId = item.getString(ASSET_ID);
             playQueueAsset(assetId, reason);
             if (call != null) {
@@ -2457,20 +2486,22 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     }
 
     private JSObject buildQueueState() {
-        JSObject state = new JSObject();
-        state.put("count", playbackQueueItems.size());
-        state.put("index", playbackQueueIndex);
-        com.getcapacitor.JSArray ids = new com.getcapacitor.JSArray();
-        for (JSObject item : playbackQueueItems) {
-            ids.put(item.getString(ASSET_ID));
+        synchronized (playbackQueueLock) {
+            JSObject state = new JSObject();
+            state.put("count", playbackQueueItems.size());
+            state.put("index", playbackQueueIndex);
+            com.getcapacitor.JSArray ids = new com.getcapacitor.JSArray();
+            for (JSObject item : playbackQueueItems) {
+                ids.put(item.getString(ASSET_ID));
+            }
+            state.put("assetIds", ids);
+            if (playbackQueueIndex >= 0 && playbackQueueIndex < playbackQueueItems.size()) {
+                state.put("assetId", playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID));
+            } else {
+                state.put("assetId", "");
+            }
+            return state;
         }
-        state.put("assetIds", ids);
-        if (playbackQueueIndex >= 0 && playbackQueueIndex < playbackQueueItems.size()) {
-            state.put("assetId", playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID));
-        } else {
-            state.put("assetId", "");
-        }
-        return state;
     }
 
     private void notifyQueueChange(String assetId, int index, String reason) {

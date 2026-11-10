@@ -768,7 +768,7 @@ export interface NativeAudio {
   addListener(eventName: 'currentTime', listenerFunc: CurrentTimeListener): Promise<PluginListenerHandle>;
   /**
    * Listen for playback state changes, including notification and lock-screen transport controls.
-   * Emitted by Android and iOS. The current Web implementation does not emit this event.
+   * Emitted on Android, iOS, and Web when plugin transport methods change playback state.
    *
    * @since 8.3.15
    * return {@link PlaybackStateEvent}
