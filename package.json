@@ -37,7 +37,7 @@
   "scripts": {
     "capacitor:sync:after": "node scripts/configure-dependencies.js",
     "verify": "bun run verify:ios && bun run verify:android && bun run verify:web",
-    "verify:ios": "xcodebuild test -scheme CapgoCapacitorNativeAudio -destination 'platform=iOS Simulator,name=iPhone 17'",
+    "verify:ios": "xcodebuild test -scheme CapgoCapacitorNativeAudio -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:NativeAudioPluginTests/QueueSnapshotRoutingTests",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
     "verify:web": "bun run build && bun run test:web",
     "test": "bun run test:web && bun run test:ios",

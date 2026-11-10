@@ -239,7 +239,7 @@ extension NativeAudio {
         ])
     }
 
-    private func buildQueueStateDictionary() -> [String: Any] {
+    internal func buildQueueStateDictionary() -> [String: Any] {
         var result: [String: Any] = [
             "count": playbackQueueIds.count,
             "index": playbackQueueIndex,
