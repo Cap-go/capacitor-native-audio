@@ -18,7 +18,7 @@ Play sound effects, music and streams with native audio engines in your Capacito
 
 ## Built and maintained with AI
 
-We build, improve and fix our plugins with heavy use of AI. Capgo the product is mostly AI-optional for you; the AI is our own engineering system, and the speed it gives us is part of what you pay for.
+We build, improve and fix our plugins with heavy use of AI, so issues usually get fixed in under a day and pull requests get feedback the same day. A human still reviews and merges 50+ pull requests daily.
 
 - Most plugin issues get a fix pull request the same day, often within a couple of hours, and are usually resolved in one to two days.
 - Every pull request goes through our AI review system, usually within minutes.
