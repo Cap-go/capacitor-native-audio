@@ -102,6 +102,8 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     internal var playbackQueueIndex: Int = -1
     internal var playbackQueueItemById: [String: [String: Any]] = [:]
     internal var configuredProgressInterval: Double = 0.5
+    internal var seekBackwardSeconds: Double = 15
+    internal var seekForwardSeconds: Double = 15
     private var lastProgressEmitByAsset: [String: TimeInterval] = [:]
 
     /// Initialize plugin state and audio-related handlers, and register background behavior for session management.
@@ -399,7 +401,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         // Skip forward command
-        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 15)]
+        applyRemoteSeekIntervals()
         commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.addTarget { [weak self] event in
             guard let self else { return .commandFailed }
@@ -408,7 +410,6 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
 
         // Skip backward command
-        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 15)]
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.addTarget { [weak self] event in
             guard let self else { return .commandFailed }
@@ -423,6 +424,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             guard let positionEvent = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             return self.handleSeekCommand(targetTime: positionEvent.positionTime)
         }
+    }
+
+    private func applyRemoteSeekIntervals() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: seekBackwardSeconds)]
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: seekForwardSeconds)]
     }
     // swiftlint:enable function_body_length
 
@@ -512,6 +519,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         if let showNotification = call.getBool(Constant.ShowNotification) {
             self.showNotification = showNotification
         }
+        if let seekBackwardSeconds = call.getDouble("seekBackwardSeconds"), seekBackwardSeconds > 0 {
+            self.seekBackwardSeconds = seekBackwardSeconds
+        }
+        if let seekForwardSeconds = call.getDouble("seekForwardSeconds"), seekForwardSeconds > 0 {
+            self.seekForwardSeconds = seekForwardSeconds
+        }
+        applyRemoteSeekIntervals()
 
         logger.info("Configuring audio session with focus=%@ background=%@ ignoreSilent=%@", "\(focus)", "\(background)", "\(ignoreSilent)")
 
@@ -1338,6 +1352,13 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
 
             let rate = min(max(call.getFloat(Constant.Rate) ?? Constant.DefaultRate, Constant.MinRate), Constant.MaxRate)
             audioAsset.setRate(rate: rate as NSNumber)
+            if self.showNotification, self.currentlyPlayingAssetId == call.getString(Constant.AssetIdKey) {
+                self.updatePlaybackState(
+                    isPlaying: audioAsset.isPlaying(),
+                    elapsedTime: audioAsset.getCurrentTime(),
+                    duration: audioAsset.getDuration()
+                )
+            }
             call.resolve()
         }
     }
@@ -1752,7 +1773,12 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             // Add playback info
             nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = audioAsset.getDuration()
             nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = audioAsset.getCurrentTime()
-            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+            let playbackRate = Double(audioAsset.getPlaybackRate())
+            if audioAsset.isPlaying() {
+                nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = playbackRate > 0 ? playbackRate : 1.0
+            } else {
+                nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = 0.0
+            }
 
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         }
@@ -1799,10 +1825,26 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         }
     }
 
+    private func displayedPlaybackRate(isPlaying: Bool) -> Double {
+        guard isPlaying else { return 0 }
+        let readRate = { () -> Double in
+            guard let assetId = self.currentlyPlayingAssetId,
+                  let asset = self.audioList[assetId] as? AudioAsset else {
+                return 1
+            }
+            let rate = Double(asset.getPlaybackRate())
+            return rate > 0 ? rate : 1
+        }
+        if DispatchQueue.getSpecific(key: queueKey) != nil || DispatchQueue.getSpecific(key: audioQueueContextKey) == true {
+            return readRate()
+        }
+        return audioQueue.sync(execute: readRate)
+    }
+
     private func updatePlaybackState(isPlaying: Bool, elapsedTime: TimeInterval? = nil, duration: TimeInterval? = nil) {
         DispatchQueue.main.async {
             var nowPlayingInfo = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [String: Any]()
-            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+            nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = self.displayedPlaybackRate(isPlaying: isPlaying)
             if let elapsed = elapsedTime {
                 nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
             }

@@ -14,7 +14,7 @@ await NativeAudio.configure({
 });
 ```
 
-`backgroundPlayback: true` skips the plugin pause or resume logic when the app backgrounds. On Android it does **not** start a foreground service. You still need manifest permissions (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`) and your own media foreground service before relying on background playback. See README Notification Center Display.
+`backgroundPlayback: true` skips the plugin pause or resume logic when the app backgrounds. On Android, together with `showNotification: true`, it starts the plugin media foreground service. The app manifest still needs `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and `WAKE_LOCK`. See README Android Background Playback.
 
 ```typescript
 await NativeAudio.addListener('queueChange', ({ assetId, index, reason }) => {

@@ -207,31 +207,54 @@ export interface ConfigureOptions {
    */
   progressInterval?: number;
   /**
+   * Seconds to skip backward from the notification, lock screen, Control Center, and headset.
+   * Values of `0` or less use the default.
+   *
+   * @default 15
+   * @since 8.6.0
+   */
+  seekBackwardSeconds?: number;
+  /**
+   * Seconds to skip forward from the notification, lock screen, Control Center, and headset.
+   * Values of `0` or less use the default.
+   *
+   * @default 15
+   * @since 8.6.0
+   */
+  seekForwardSeconds?: number;
+  /**
    * Enable background audio playback (Android only)
    *
    * When enabled, audio will continue playing when the app is backgrounded or the screen is locked.
-   * The plugin will skip the automatic pause/resume logic that normally occurs when the app
+   * The plugin skips the automatic pause/resume logic that normally runs when the app
    * enters the background or returns to the foreground.
    *
-   * **Important Android Requirements:**
-   * To use background playback on Android, your app must:
-   * 1. Declare the required permissions in `AndroidManifest.xml`:
-   *    - `<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />`
-   *    - `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />`
-   *    - `<uses-permission android:name="android.permission.WAKE_LOCK" />`
-   * 2. Start a Foreground Service with a media-style notification before backgrounding
-   *    (the plugin does not automatically create or manage the foreground service)
-   * 3. Use `showNotification: true` to display playback controls in the notification
+   * With `showNotification: true`, the plugin also starts `AudioPlaybackService` and posts the
+   * media notification as a foreground service notification. That keeps the process eligible
+   * to continue playback. The service is registered by the plugin. The app still has to declare
+   * the permissions below. If those permissions are missing, playback starts, but Android may
+   * stop it in the background.
    *
-   * **Usage Example:**
+   * **Android manifest**
+   * ```xml
+   * <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+   * <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+   * <uses-permission android:name="android.permission.WAKE_LOCK" />
+   * ```
+   *
+   * `WAKE_LOCK` lets the service keep the CPU awake while audio is playing.
+   *
+   * **Usage**
    * ```typescript
    * await NativeAudio.configure({
    *   backgroundPlayback: true,
-   *   showNotification: true
+   *   showNotification: true,
+   *   seekBackwardSeconds: 15,
+   *   seekForwardSeconds: 30
    * });
-   * // Start your foreground service here
-   * // Then preload and play audio as normal
    * ```
+   *
+   * On iOS, background playback uses the Audio background mode. `backgroundPlayback` is ignored there.
    *
    * @default false
    * @platform Android

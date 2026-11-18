@@ -225,6 +225,24 @@ npx cap sync
 - If HLS is disabled and you try to play an `.m3u8` file, you'll get a clear error message explaining how to enable it
 - The default is `hls: true` to maintain backward compatibility
 
+### Notification icons (Android)
+
+The media notification uses the system media icons. To match your app, add white-on-transparent drawables under `android/app/src/main/res/drawable/` and name them in `capacitor.config.ts`:
+
+```typescript
+const config: CapacitorConfig = {
+  plugins: {
+    NativeAudio: {
+      smallIcon: 'ic_notification',
+      seekBackwardIcon: 'ic_seek_backward',
+      seekForwardIcon: 'ic_seek_forward',
+    },
+  },
+};
+```
+
+The value is the drawable resource name, without `@drawable/` or a file extension. If a name is missing or the resource does not exist, the plugin keeps the default icon. iOS draws the lock screen and Control Center controls itself.
+
 <docgen-config>
 <!--Update the source file JSDoc comments and rerun docgen to update the docs below-->
 
@@ -336,20 +354,23 @@ The media control buttons automatically handle:
 - **Play** - Resumes paused audio
 - **Pause** - Pauses playing audio
 - **Stop** - Stops audio and clears the notification
-- **Rewind 15s** (Android only) - Skips backward 15 seconds
-- **Forward 15s** (Android only) - Skips forward 15 seconds
+- **Skip backward** - Seeks backward. Default is 15 seconds (`seekBackwardSeconds`)
+- **Skip forward** - Seeks forward. Default is 15 seconds (`seekForwardSeconds`)
+- **Previous / Next** - Changes the queue item when the queue has more than one track
 
 If you need to keep your app UI synchronized with Android notification or lock-screen controls,
 listen for the `playbackState` event. It emits the `assetId`, resolved state, reason, and the latest
 position/duration snapshot after remote transport actions.
 
 **Android Notification Controls:**
-On Android, the notification displays three action buttons in this order:
-1. ⏪ **Rewind 15s** - Skip backward 15 seconds
+On Android, a single track shows three actions:
+1. ⏪ **Skip backward** - Default 15 seconds
 2. ▶️/⏸️ **Play/Pause** - Toggle playback (icon updates automatically)
-3. ⏩ **Forward 15s** - Skip forward 15 seconds
+3. ⏩ **Skip forward** - Default 15 seconds
 
-The skip forward/backward buttons are automatically available when `showNotification: true` is configured. No additional setup is required.
+When a queue has more than one item, Previous and Next are added on the outside. The compact notification then shows Previous, Play/Pause, and Next. Skip backward and skip forward stay on the expanded notification.
+
+Skip buttons are available when `showNotification: true`. Change the interval with `seekBackwardSeconds` and `seekForwardSeconds` in `configure()`.
 
 **Notes:**
 - All metadata fields are optional
@@ -361,94 +382,61 @@ The skip forward/backward buttons are automatically available when `showNotifica
 
 ### Android Background Playback @since 8.2.0
 
-By default, Android apps pause audio when the app is backgrounded or the screen is locked. To enable continuous audio playback in the background (for meditation apps, music players, podcast players, etc.), use the `backgroundPlayback` flag.
+By default, Android pauses audio when the app is backgrounded or the screen is locked. `backgroundPlayback: true` skips that pause. With `showNotification: true`, the plugin starts `AudioPlaybackService` and posts the playback notification as a media foreground service, so Android can keep the process alive.
 
-> **⚠️ Important Android Requirements**
-> 
-> To use background playback on Android, your app must meet these requirements:
-> 1. Declare the required permissions in `AndroidManifest.xml`
-> 2. Start an Android Foreground Service with a media notification
-> 3. Configure the plugin with `backgroundPlayback: true`
+> **Android setup**
+>
+> 1. Declare the permissions below in the app `AndroidManifest.xml`
+> 2. Call `configure()` with `backgroundPlayback: true` and `showNotification: true`
+>
+> The service is already merged from the plugin. Do not register a second service.
 
-**Step 1: Add required permissions to `AndroidManifest.xml`**
+**Step 1: Add the permissions**
 
 ```xml
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Required for background audio playback -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    
-    <application>
-        <!-- Your app configuration -->
-    </application>
-</manifest>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
 ```
 
-**Step 2: Configure the plugin with background playback enabled**
+`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` are required from Android 14 to start the service. `WAKE_LOCK` lets the service keep the CPU awake while audio is playing. If the foreground service permissions are missing, playback still starts and the plugin logs a warning. Android may then stop it in the background.
+
+**Step 2: Configure and play**
 
 ```typescript
 import { NativeAudio } from '@capgo/capacitor-native-audio';
 
-// Enable background playback and notification center
-await NativeAudio.configure({
-  backgroundPlayback: true,  // Prevent automatic pause when backgrounded
-  showNotification: true,    // Show playback controls in notification
-  focus: true                // Request audio focus (optional but recommended)
-});
-```
-
-**Step 3: Start a Foreground Service (your responsibility)**
-
-The plugin does NOT automatically create or manage the Android Foreground Service. You must create and start your own foreground service using a Capacitor plugin like [`@capacitor/local-notifications`](https://capacitorjs.com/docs/apis/local-notifications) or a custom Android service.
-
-Here's a conceptual example:
-
-```typescript
-// 1. Configure the audio plugin
 await NativeAudio.configure({
   backgroundPlayback: true,
-  showNotification: true
+  showNotification: true,
+  focus: true,
+  seekBackwardSeconds: 15,
+  seekForwardSeconds: 30,
 });
 
-// 2. Start your foreground service (implementation depends on your app)
-// This is typically done with a native Android service or a plugin
-// that provides foreground service capabilities
-await startForegroundService();
-
-// 3. Preload and play audio as normal
 await NativeAudio.preload({
   assetId: 'meditation',
   assetPath: 'audio/meditation.mp3',
   notificationMetadata: {
     title: 'Meditation Session',
-    artist: 'Your App Name'
-  }
+    artist: 'Your App Name',
+  },
 });
 
 await NativeAudio.play({ assetId: 'meditation' });
-
-// Audio will continue playing when app is backgrounded
-// The foreground service ensures Android allows background playback
 ```
 
-**Important timing notes:**
-- The foreground service should be started **before** the app enters the background
-- Start the service immediately after configuring the audio plugin and before playing audio
-- If the foreground service is not running, Android may still kill your audio playback
+The service starts when the notification is shown, and stops when playback is stopped or the notification is cleared. Pause keeps the service so a lock-screen resume still works.
 
 **How it works:**
-- Without `backgroundPlayback: true`: The plugin automatically pauses all audio when the app enters the background
-- With `backgroundPlayback: true`: The plugin skips automatic pause/resume, allowing continuous playback
+- Without `backgroundPlayback: true`: the plugin pauses audio when the app enters the background
+- With `backgroundPlayback: true`: the plugin leaves playback running and, when the notification is visible, holds a media foreground service
 
-**Important notes:**
-- This flag is **Android-only** (iOS already supports background playback via AVAudioSession)
-- You **must** start an Android Foreground Service separately (plugin does not handle this)
-- Combine with `showNotification: true` to display playback controls
-- Starting Android 14+, foreground services require the `FOREGROUND_SERVICE_MEDIA_PLAYBACK` permission type
+**iOS:** `backgroundPlayback` is ignored. Enable the Audio background mode (`UIBackgroundModes` = `audio`) and use `showNotification: true` for Control Center and the lock screen.
 
-**Alternative approach:**
-If you need a complete solution including foreground service management, consider using a dedicated media playback plugin or implementing a custom Android service in your app's native code.
+**Notes:**
+- Combine `backgroundPlayback` with `showNotification`. The service uses that media notification
+- On Android 14 and newer the service type is `mediaPlayback`
 
 ## Play Once (Fire-and-Forget) @since 7.11.0
 
@@ -1330,14 +1318,16 @@ Use this when you need to ensure compatibility with other audio plugins
 
 #### ConfigureOptions
 
-| Prop                     | Type                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Default            | Since |
-| ------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----- |
-| **`focus`**              | <code>boolean</code> | focus the audio with Audio Focus                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |                    |       |
-| **`background`**         | <code>boolean</code> | Play the audio in the background                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |                    |       |
-| **`ignoreSilent`**       | <code>boolean</code> | Ignore silent mode, works only on iOS setting this will nuke other audio apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |                    |       |
-| **`showNotification`**   | <code>boolean</code> | Show audio playback in the notification center (iOS and Android) When enabled, displays audio metadata (title, artist, album, artwork) in the system notification and Control Center (iOS) or lock screen. **Important iOS Behavior:** Enabling this option changes the audio session category to `.playback` with `.default` mode, which means your app's audio will **interrupt** other apps' audio (like background music from Spotify, Apple Music, etc.) instead of mixing with it. This is required for the Now Playing info to appear in Control Center and on the lock screen. **Trade-offs:** - `showNotification: true` → Shows Now Playing controls, but interrupts other audio - `showNotification: false` → Audio mixes with other apps, but no Now Playing controls Use this when your app is the primary audio source (music players, podcast apps, etc.). Disable this for secondary audio like sound effects or notification sounds where mixing with background music is preferred.                                                                                                                                                                     |                    |       |
-| **`progressInterval`**   | <code>number</code>  | Seconds between `progress` events while audio is playing. The `currentTime` event still fires about every 100ms.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | <code>0.5</code>   | 8.5.0 |
-| **`backgroundPlayback`** | <code>boolean</code> | Enable background audio playback (Android only) When enabled, audio will continue playing when the app is backgrounded or the screen is locked. The plugin will skip the automatic pause/resume logic that normally occurs when the app enters the background or returns to the foreground. **Important Android Requirements:** To use background playback on Android, your app must: 1. Declare the required permissions in `AndroidManifest.xml`: - `&lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE" /&gt;` - `&lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" /&gt;` - `&lt;uses-permission android:name="android.permission.WAKE_LOCK" /&gt;` 2. Start a Foreground Service with a media-style notification before backgrounding (the plugin does not automatically create or manage the foreground service) 3. Use `showNotification: true` to display playback controls in the notification **Usage Example:** ```typescript await NativeAudio.configure({ backgroundPlayback: true, showNotification: true }); // Start your foreground service here // Then preload and play audio as normal ``` | <code>false</code> | 8.2.0 |
+| Prop                      | Type                 | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Default            | Since |
+| ------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ | ----- |
+| **`focus`**               | <code>boolean</code> | focus the audio with Audio Focus                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                    |       |
+| **`background`**          | <code>boolean</code> | Play the audio in the background                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |                    |       |
+| **`ignoreSilent`**        | <code>boolean</code> | Ignore silent mode, works only on iOS setting this will nuke other audio apps                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |                    |       |
+| **`showNotification`**    | <code>boolean</code> | Show audio playback in the notification center (iOS and Android) When enabled, displays audio metadata (title, artist, album, artwork) in the system notification and Control Center (iOS) or lock screen. **Important iOS Behavior:** Enabling this option changes the audio session category to `.playback` with `.default` mode, which means your app's audio will **interrupt** other apps' audio (like background music from Spotify, Apple Music, etc.) instead of mixing with it. This is required for the Now Playing info to appear in Control Center and on the lock screen. **Trade-offs:** - `showNotification: true` → Shows Now Playing controls, but interrupts other audio - `showNotification: false` → Audio mixes with other apps, but no Now Playing controls Use this when your app is the primary audio source (music players, podcast apps, etc.). Disable this for secondary audio like sound effects or notification sounds where mixing with background music is preferred.                                                                                                                                                                                                                                                                                                                    |                    |       |
+| **`progressInterval`**    | <code>number</code>  | Seconds between `progress` events while audio is playing. The `currentTime` event still fires about every 100ms.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | <code>0.5</code>   | 8.5.0 |
+| **`seekBackwardSeconds`** | <code>number</code>  | Seconds to skip backward from the notification, lock screen, Control Center, and headset. Values of `0` or less use the default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | <code>15</code>    | 8.6.0 |
+| **`seekForwardSeconds`**  | <code>number</code>  | Seconds to skip forward from the notification, lock screen, Control Center, and headset. Values of `0` or less use the default.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | <code>15</code>    | 8.6.0 |
+| **`backgroundPlayback`**  | <code>boolean</code> | Enable background audio playback (Android only) When enabled, audio will continue playing when the app is backgrounded or the screen is locked. The plugin skips the automatic pause/resume logic that normally runs when the app enters the background or returns to the foreground. With `showNotification: true`, the plugin also starts `AudioPlaybackService` and posts the media notification as a foreground service notification. That keeps the process eligible to continue playback. The service is registered by the plugin. The app still has to declare the permissions below. If those permissions are missing, playback starts, but Android may stop it in the background. **Android manifest** ```xml &lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE" /&gt; &lt;uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" /&gt; &lt;uses-permission android:name="android.permission.WAKE_LOCK" /&gt; ``` `WAKE_LOCK` lets the service keep the CPU awake while audio is playing. **Usage** ```typescript await NativeAudio.configure({ backgroundPlayback: true, showNotification: true, seekBackwardSeconds: 15, seekForwardSeconds: 30 }); ``` On iOS, background playback uses the Audio background mode. `backgroundPlayback` is ignored there. | <code>false</code> | 8.2.0 |
 
 
 #### PreloadOptions

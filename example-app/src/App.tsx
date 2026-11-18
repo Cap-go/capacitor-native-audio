@@ -83,11 +83,14 @@ const App = () => {
 
     const setup = async () => {
       try {
-        await NativeAudio.configure({ 
-          focus: true, 
-          background: true, 
-          ignoreSilent: false, 
-          showNotification
+        await NativeAudio.configure({
+          focus: true,
+          background: true,
+          ignoreSilent: false,
+          showNotification,
+          backgroundPlayback: showNotification,
+          seekBackwardSeconds: 15,
+          seekForwardSeconds: 15,
         });
       } catch (error) {
         // Configure fails silently on web if permissions are missing; surface to UI instead
@@ -358,7 +361,7 @@ const App = () => {
         <h2>Notification Settings (iOS Lock Screen / Control Center)</h2>
         <p className="asset-description">
           Test for <a href="https://github.com/Cap-go/capacitor-native-audio/issues/202" target="_blank" rel="noopener noreferrer">Issue #202</a>: 
-          Enable to show audio playback controls in Control Center and on the lock screen.
+          Enable to show playback controls on the lock screen and in the notification. On Android this also starts the media foreground service.
         </p>
         <div className="actions">
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
