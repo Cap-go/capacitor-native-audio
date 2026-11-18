@@ -374,6 +374,9 @@ public class AudioAsset: NSObject, AVAudioPlayerDelegate {
     public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self else { return }
+            if self.owner?.continueQueueAfterCompletion(assetId: self.assetId) == true {
+                return
+            }
             dispatchComplete()
             onComplete?()
             owner?.audioPlayerDidFinishPlaying(player, successfully: flag)

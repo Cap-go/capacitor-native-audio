@@ -271,6 +271,9 @@ The value is the drawable resource name, without `@drawable/` or a file extensio
 | queueNext      | ✅      | ✅  | ✅  |
 | queuePrevious  | ✅      | ✅  | ✅  |
 | queueSelect    | ✅      | ✅  | ✅  |
+| queueAdd       | ✅      | ✅  | ✅  |
+| queueRemove    | ✅      | ✅  | ✅  |
+| setRepeatMode  | ✅      | ✅  | ✅  |
 | getQueueState  | ✅      | ✅  | ✅  |
 | clearQueue     | ✅      | ✅  | ✅  |
 | getPlaybackState | ✅    | ✅  | ✅  |
@@ -1066,6 +1069,63 @@ queueSelect(options: Assets) => Promise<QueueState>
 --------------------
 
 
+### queueAdd(...)
+
+```typescript
+queueAdd(options: QueueAddOptions) => Promise<QueueState>
+```
+
+Insert tracks into the current queue without interrupting the item that is already playing.
+
+| Param         | Type                                                        |
+| ------------- | ----------------------------------------------------------- |
+| **`options`** | <code><a href="#queueaddoptions">QueueAddOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.6.0
+
+--------------------
+
+
+### queueRemove(...)
+
+```typescript
+queueRemove(options: QueueRemoveOptions) => Promise<QueueState>
+```
+
+Remove a track from the current queue.
+If the playing track is removed, playback continues with the track that takes its place, or stops when the queue is empty.
+
+| Param         | Type                                                              |
+| ------------- | ----------------------------------------------------------------- |
+| **`options`** | <code><a href="#queueremoveoptions">QueueRemoveOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#queuestate">QueueState</a>&gt;</code>
+
+**Since:** 8.6.0
+
+--------------------
+
+
+### setRepeatMode(...)
+
+```typescript
+setRepeatMode(options: SetRepeatModeOptions) => Promise<void>
+```
+
+Repeat the current item, the whole queue, or neither.
+This applies to the current session only.
+
+| Param         | Type                                                                  |
+| ------------- | --------------------------------------------------------------------- |
+| **`options`** | <code><a href="#setrepeatmodeoptions">SetRepeatModeOptions</a></code> |
+
+**Since:** 8.6.0
+
+--------------------
+
+
 ### setSpeaker()
 
 ```typescript
@@ -1334,7 +1394,8 @@ Use this when you need to ensure compatibility with other audio plugins
 
 | Prop                       | Type                                                                  | Description                                                                                                                                                                                                                                                                                     | Since  |
 | -------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| **`assetPath`**            | <code>string</code>                                                   | Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://) Supported formats: - MP3, WAV (all platforms) - M3U8/HLS streams (iOS and Android)                                                                                                           |        |
+| **`assetPath`**            | <code>string</code>                                                   | Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://) Supported formats: - MP3, WAV (all platforms) - M3U8/HLS streams (iOS and Android) Required unless `blob` is set.                                                                            |        |
+| **`blob`**                 | <code>Blob</code>                                                     | Audio bytes to play. Web only. When set, this is used instead of `assetPath`.                                                                                                                                                                                                                   | 8.6.0  |
 | **`assetId`**              | <code>string</code>                                                   | Asset Id, unique identifier of the file                                                                                                                                                                                                                                                         |        |
 | **`volume`**               | <code>number</code>                                                   | Volume of the audio, between 0.1 and 1.0                                                                                                                                                                                                                                                        |        |
 | **`audioChannelNum`**      | <code>number</code>                                                   | Audio channel number, default is 1                                                                                                                                                                                                                                                              |        |
@@ -1371,7 +1432,8 @@ behavior details about audio mixing on iOS.
 
 | Prop                       | Type                                                                  | Description                                                                                                                                                                                                                                                                                     | Default            | Since  |
 | -------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------ |
-| **`assetPath`**            | <code>string</code>                                                   | Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://) Supported formats: - MP3, WAV (all platforms) - M3U8/HLS streams (iOS and Android)                                                                                                           |                    |        |
+| **`assetPath`**            | <code>string</code>                                                   | Path to the audio file, relative path of the file, absolute url (file://) or remote url (https://) Supported formats: - MP3, WAV (all platforms) - M3U8/HLS streams (iOS and Android) Required unless `blob` is set.                                                                            |                    |        |
+| **`blob`**                 | <code>Blob</code>                                                     | Audio bytes to play. Web only. When set, this is used instead of `assetPath`.                                                                                                                                                                                                                   |                    | 8.6.0  |
 | **`volume`**               | <code>number</code>                                                   | Volume of the audio, between 0.1 and 1.0                                                                                                                                                                                                                                                        | <code>1.0</code>   |        |
 | **`isUrl`**                | <code>boolean</code>                                                  | Is the audio file a URL, pass true if assetPath is a `file://` url or a streaming URL (m3u8)                                                                                                                                                                                                    | <code>false</code> |        |
 | **`autoPlay`**             | <code>boolean</code>                                                  | Automatically start playback after loading                                                                                                                                                                                                                                                      | <code>true</code>  |        |
@@ -1422,11 +1484,12 @@ behavior details about audio mixing on iOS.
 
 #### AssetStopOptions
 
-| Prop                  | Type                 | Description                                   |
-| --------------------- | -------------------- | --------------------------------------------- |
-| **`assetId`**         | <code>string</code>  | Asset Id, unique identifier of the file       |
-| **`fadeOut`**         | <code>boolean</code> | Whether to fade out the audio before stopping |
-| **`fadeOutDuration`** | <code>number</code>  | Fade out duration in seconds. Default is 1s.  |
+| Prop                         | Type                 | Description                                                                                                                                   | Default           | Since |
+| ---------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ----- |
+| **`assetId`**                | <code>string</code>  | Asset Id, unique identifier of the file                                                                                                       |                   |       |
+| **`fadeOut`**                | <code>boolean</code> | Whether to fade out the audio before stopping                                                                                                 |                   |       |
+| **`fadeOutDuration`**        | <code>number</code>  | Fade out duration in seconds. Default is 1s.                                                                                                  |                   |       |
+| **`deactivateAudioSession`** | <code>boolean</code> | Deactivate the iOS audio session after this stop. Set this to `false` when another `play()` follows immediately, so the session stays active. | <code>true</code> | 8.6.0 |
 
 
 #### AssetVolume
@@ -1490,6 +1553,29 @@ behavior details about audio mixing on iOS.
 | **`items`**      | <code>QueueItem[]</code> | Ordered list of tracks to play.               |                    |
 | **`startIndex`** | <code>number</code>      | Index of the item to prepare first.           | <code>0</code>     |
 | **`autoPlay`**   | <code>boolean</code>     | Start playback after the first item is ready. | <code>false</code> |
+
+
+#### QueueAddOptions
+
+| Prop        | Type                     | Description                                    |
+| ----------- | ------------------------ | ---------------------------------------------- |
+| **`items`** | <code>QueueItem[]</code> | Tracks to insert into the current queue.       |
+| **`index`** | <code>number</code>      | Zero-based index to insert at. Omit to append. |
+
+
+#### QueueRemoveOptions
+
+| Prop          | Type                | Description                                       |
+| ------------- | ------------------- | ------------------------------------------------- |
+| **`index`**   | <code>number</code> | Zero-based index to remove.                       |
+| **`assetId`** | <code>string</code> | Asset id to remove. Used when `index` is omitted. |
+
+
+#### SetRepeatModeOptions
+
+| Prop       | Type                                              | Description                                                                                                                                                  | Default             | Since |
+| ---------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------- | ----- |
+| **`mode`** | <code><a href="#repeatmode">RepeatMode</a></code> | `none` stops at the ends of the queue. `one` replays the current item when it finishes. `all` plays the next item, wrapping from the last item to the first. | <code>'none'</code> | 8.6.0 |
 
 
 #### PluginListenerHandle
@@ -1566,6 +1652,11 @@ One entry in a playback queue. Uses the same fields as {@link <a href="#preloado
 From T, pick a set of properties whose keys are in the union K
 
 <code>{ [P in K]: T[P]; }</code>
+
+
+#### RepeatMode
+
+<code>'none' | 'one' | 'all'</code>
 
 
 #### AudioRouteValue

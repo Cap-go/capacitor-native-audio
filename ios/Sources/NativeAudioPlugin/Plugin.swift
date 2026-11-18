@@ -50,6 +50,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
         CAPPluginMethod(name: "queueNext", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "queuePrevious", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "queueSelect", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queueAdd", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queueRemove", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setRepeatMode", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setSpeaker", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setEarpiece", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAudioRoute", returnType: CAPPluginReturnPromise)
@@ -100,6 +103,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
     var isRunningTests = false
     internal var playbackQueueIds: [String] = []
     internal var playbackQueueIndex: Int = -1
+    internal var repeatMode: String = "none"
     internal var playbackQueueItemById: [String: [String: Any]] = [:]
     internal var configuredProgressInterval: Double = 0.5
     internal var seekBackwardSeconds: Double = 15
@@ -1235,7 +1239,9 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
                     self.notificationMetadataMap.removeValue(forKey: audioId)
                 }
 
-                self.endSession()
+                if call.getBool("deactivateAudioSession") ?? true {
+                    self.endSession()
+                }
                 if !fadeOut {
                     if let audioAsset = self.audioList[audioId] as? AudioAsset {
                         self.notifyPlaybackState(assetId: audioId, reason: "stop", state: .stopped, audioAsset: audioAsset)
@@ -1688,6 +1694,7 @@ public class NativeAudio: CAPPlugin, AVAudioPlayerDelegate, CAPBridgedPlugin {
             self.playbackQueueIds = []
             self.playbackQueueItemById = [:]
             self.playbackQueueIndex = -1
+            self.repeatMode = "none"
             self.refreshQueueRemoteCommands()
         }
 

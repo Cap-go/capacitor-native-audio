@@ -33,6 +33,7 @@ public class RemoteAudioAsset: AudioAsset {
 
             for _ in 0..<channelCount {
                 let playerItem = AVPlayerItem(asset: asset)
+                playerItem.audioTimePitchAlgorithm = .timeDomain
                 let player = AVPlayer(playerItem: playerItem)
                 player.volume = self.initialVolume
                 self.playerItems.append(playerItem)
@@ -88,6 +89,9 @@ public class RemoteAudioAsset: AudioAsset {
     func playerDidFinishPlaying(player: AVPlayer) {
         owner?.executeOnAudioQueue { [weak self] in
             guard let self else { return }
+            if self.owner?.continueQueueAfterCompletion(assetId: self.assetId) == true {
+                return
+            }
             self.owner?.notifyListeners("complete", data: ["assetId": self.assetId])
             self.dispatchedCompleteMap[self.assetId] = true
             self.owner?.handlePlaybackCompletion(assetId: self.assetId, audioAsset: self)
@@ -295,6 +299,7 @@ public class RemoteAudioAsset: AudioAsset {
             let validRate = min(max(rate.floatValue, Constant.MinRate), Constant.MaxRate)
             self.requestedRate = validRate
             for player in players {
+                player.currentItem?.audioTimePitchAlgorithm = .timeDomain
                 player.rate = validRate
             }
         }

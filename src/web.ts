@@ -18,12 +18,23 @@ import type {
   PlayOnceOptions,
   PlayOnceResult,
   PreloadOptions,
+  QueueAddOptions,
   QueueItem,
+  QueueRemoveOptions,
   QueueState,
+  RepeatMode,
   SetQueueOptions,
+  SetRepeatModeOptions,
 } from './definitions';
 import { NativeAudio } from './definitions';
-import { clampPlaybackRate, DEFAULT_PROGRESS_INTERVAL_SEC, normalizeProgressInterval } from './playback-utils';
+import {
+  clampPlaybackRate,
+  DEFAULT_PROGRESS_INTERVAL_SEC,
+  normalizeProgressInterval,
+  normalizeRepeatMode,
+  queueIndexAfterComplete,
+  queueIndexAfterStep,
+} from './playback-utils';
 
 type AudioAssetData = {
   fadeOut?: boolean;
@@ -66,6 +77,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
   private currentAudioRoute: AudioRouteValue = 'speaker';
   private playbackQueue: QueueItem[] = [];
   private playbackQueueIndex = -1;
+  private repeatMode: RepeatMode = 'none';
+  private blobUrls = new Map<string, string>();
+  private retainedBlobIds = new Set<string>();
   private readonly zeroVolume = 0.0001;
 
   constructor() {
@@ -189,22 +203,28 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     if (NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(options.assetId)) {
       throw 'AssetId already exists. Unload first if like to change!';
     }
-    if (!options.assetPath?.length) {
+    const sourcePath = this.resolvePreloadSource(options);
+    if (!sourcePath) {
       throw 'no assetPath provided';
     }
 
-    NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.set(options.assetId, options);
+    NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.set(options.assetId, { ...options, assetPath: sourcePath });
 
     await new Promise<void>((resolve, reject) => {
-      if (!options.isUrl && !new RegExp('^/?' + NativeAudioWeb.FILE_LOCATION).test(options.assetPath)) {
-        const slashPrefix: string = options.assetPath.startsWith('/') ? '' : '/';
-        options.assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${options.assetPath}`;
+      let assetPath = sourcePath;
+      if (!options.blob && !options.isUrl && !new RegExp('^/?' + NativeAudioWeb.FILE_LOCATION).test(assetPath)) {
+        const slashPrefix: string = assetPath.startsWith('/') ? '' : '/';
+        assetPath = `${NativeAudioWeb.FILE_LOCATION}${slashPrefix}${assetPath}`;
+        const stored = NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.get(options.assetId);
+        if (stored) {
+          NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.set(options.assetId, { ...stored, assetPath });
+        }
       }
 
       const audio: HTMLAudioElement = document.createElement('audio');
       audio.id = options.assetId;
       audio.crossOrigin = 'anonymous';
-      audio.src = options.assetPath;
+      audio.src = assetPath;
       audio.autoplay = false;
       audio.loop = false;
       audio.preload = 'metadata';
@@ -214,7 +234,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       });
 
       audio.addEventListener('error', (errEvt) => {
-        this.logError(`Error loading audio file: ${options.assetPath}, error: ${String(errEvt)}`);
+        this.logError(`Error loading audio file: ${sourcePath}, error: ${String(errEvt)}`);
         reject('Error loading audio file');
       });
 
@@ -243,6 +263,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
       await this.preload({
         assetId,
         assetPath: options.assetPath,
+        blob: options.blob,
         volume: options.volume,
         isUrl: options.isUrl,
       });
@@ -296,7 +317,11 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
   }
 
-  private onEnded(assetId: string): void {
+  private onEnded(assetId: string, naturalEnd = true): void {
+    if (naturalEnd && this.queueContinues(assetId)) {
+      void this.continueQueueAfterComplete(assetId);
+      return;
+    }
     this.logDebug(`Playback ended for assetId: ${assetId}`);
     this.notifyListeners('complete', { assetId });
     this.emitPlaybackState(assetId, 'complete', false, 'stopped');
@@ -333,7 +358,9 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
     if (recreateAudioElement) {
       const preloadOptions = NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.get(assetId) as PreloadOptions;
+      this.retainedBlobIds.add(assetId);
       await this.unload({ assetId });
+      this.retainedBlobIds.delete(assetId);
       await this.preload(preloadOptions);
     }
 
@@ -426,9 +453,22 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.doStop(audio, options);
   }
 
+  private resolvePreloadSource(options: PreloadOptions): string {
+    const existing = this.blobUrls.get(options.assetId);
+    if (existing) {
+      return existing;
+    }
+    if (options.blob) {
+      const url = URL.createObjectURL(options.blob);
+      this.blobUrls.set(options.assetId, url);
+      return url;
+    }
+    return options.assetPath ?? '';
+  }
+
   private doStop(audio: HTMLAudioElement, options: AssetStopOptions): void {
     audio.pause();
-    this.onEnded(options.assetId);
+    this.onEnded(options.assetId, false);
     this.reset(audio);
   }
 
@@ -474,6 +514,13 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     this.reset(audio);
     NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.delete(options.assetId);
     NativeAudioWeb.AUDIO_PRELOAD_OPTIONS_MAP.delete(options.assetId);
+    if (!this.retainedBlobIds.has(options.assetId)) {
+      const blobUrl = this.blobUrls.get(options.assetId);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+        this.blobUrls.delete(options.assetId);
+      }
+    }
     NativeAudioWeb.AUDIO_DATA_MAP.delete(options.assetId);
     this.snapshotPlaybackStateByAsset.delete(options.assetId);
     if (this.activeAssetId === options.assetId) {
@@ -626,6 +673,66 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
 
   async queuePrevious(): Promise<QueueState> {
     return this.advanceQueue(-1, 'previous');
+  }
+
+  async queueAdd(options: QueueAddOptions): Promise<QueueState> {
+    if (!this.playbackQueue.length) {
+      throw 'queue is empty';
+    }
+    if (!options.items?.length) {
+      throw 'queue add requires at least one item';
+    }
+    const insertAt =
+      options.index == null
+        ? this.playbackQueue.length
+        : Math.min(Math.max(options.index, 0), this.playbackQueue.length);
+    this.playbackQueue.splice(insertAt, 0, ...options.items);
+    if (this.playbackQueueIndex >= insertAt) {
+      this.playbackQueueIndex += options.items.length;
+    }
+    this.bindQueueMediaSession();
+    return this.buildQueueState();
+  }
+
+  async queueRemove(options: QueueRemoveOptions): Promise<QueueState> {
+    if (!this.playbackQueue.length) {
+      throw 'queue is empty';
+    }
+    let index = options.index;
+    if (index == null && options.assetId) {
+      index = this.playbackQueue.findIndex((item) => item.assetId === options.assetId);
+    }
+    if (index == null || index < 0 || index >= this.playbackQueue.length) {
+      throw 'queue item was not found';
+    }
+    const removed = this.playbackQueue.splice(index, 1)[0];
+    const removedCurrent = index === this.playbackQueueIndex;
+    if (this.playbackQueueIndex > index) {
+      this.playbackQueueIndex -= 1;
+    }
+    if (!this.playbackQueue.length) {
+      this.playbackQueueIndex = -1;
+      this.bindQueueMediaSession();
+      if (removedCurrent) {
+        await this.stop({ assetId: removed.assetId, deactivateAudioSession: false });
+      }
+      return this.buildQueueState();
+    }
+    if (removedCurrent) {
+      if (this.playbackQueueIndex < 0 || this.playbackQueueIndex >= this.playbackQueue.length) {
+        this.playbackQueueIndex = this.playbackQueue.length - 1;
+      }
+      return this.selectQueueIndex(this.playbackQueueIndex, 'remove', removed.assetId);
+    }
+    this.bindQueueMediaSession();
+    return this.buildQueueState();
+  }
+
+  async setRepeatMode(options: SetRepeatModeOptions): Promise<void> {
+    if (options.mode !== 'none' && options.mode !== 'one' && options.mode !== 'all') {
+      throw 'repeat mode must be none, one, or all';
+    }
+    this.repeatMode = normalizeRepeatMode(options.mode);
   }
 
   async queueSelect(options: Assets): Promise<QueueState> {
@@ -832,6 +939,7 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     }
     this.stopCurrentTimeUpdates();
     this.snapshotPlaybackStateByAsset.clear();
+    this.repeatMode = 'none';
     await this.clearQueue();
   }
 
@@ -877,19 +985,36 @@ export class NativeAudioWeb extends WebPlugin implements NativeAudio {
     if (!this.playbackQueue.length) {
       throw 'queue is empty';
     }
-    const nextIndex = this.playbackQueueIndex + delta;
-    if (nextIndex < 0 || nextIndex >= this.playbackQueue.length) {
+    const nextIndex = queueIndexAfterStep(this.playbackQueueIndex, this.playbackQueue.length, delta, this.repeatMode);
+    if (nextIndex == null) {
       throw 'queue boundary reached';
     }
     return this.selectQueueIndex(nextIndex, reason);
   }
 
-  private async selectQueueIndex(index: number, reason: string): Promise<QueueState> {
+  private queueContinues(assetId: string): boolean {
+    return (
+      queueIndexAfterComplete(this.playbackQueueIndex, this.playbackQueue.length, this.repeatMode) != null &&
+      this.getCurrentQueueAssetId() === assetId
+    );
+  }
+
+  private async continueQueueAfterComplete(assetId: string): Promise<void> {
+    const nextIndex = queueIndexAfterComplete(this.playbackQueueIndex, this.playbackQueue.length, this.repeatMode);
+    if (nextIndex == null || this.getCurrentQueueAssetId() !== assetId) {
+      this.notifyListeners('complete', { assetId });
+      this.emitPlaybackState(assetId, 'complete', false, 'stopped');
+      return;
+    }
+    await this.selectQueueIndex(nextIndex, 'repeat');
+  }
+
+  private async selectQueueIndex(index: number, reason: string, stopAssetId?: string): Promise<QueueState> {
     const item = this.playbackQueue[index];
-    const previousId = this.getCurrentQueueAssetId();
+    const previousId = stopAssetId ?? this.getCurrentQueueAssetId();
     this.playbackQueueIndex = index;
     if (previousId && previousId !== item.assetId && NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(previousId)) {
-      await this.stop({ assetId: previousId });
+      await this.stop({ assetId: previousId, deactivateAudioSession: false });
     }
     if (!NativeAudioWeb.AUDIO_ASSET_BY_ASSET_ID.has(item.assetId)) {
       await this.preload(item);

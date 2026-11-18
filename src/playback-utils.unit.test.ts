@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { clampPlaybackRate, normalizeProgressInterval } from './playback-utils';
+import {
+  clampPlaybackRate,
+  normalizeProgressInterval,
+  queueIndexAfterComplete,
+  queueIndexAfterStep,
+} from './playback-utils';
 
 describe('playback-utils', () => {
   it('clamps rates to the native supported range', () => {
@@ -13,5 +18,19 @@ describe('playback-utils', () => {
     expect(normalizeProgressInterval()).toBe(0.5);
     expect(normalizeProgressInterval(-1)).toBe(0.5);
     expect(normalizeProgressInterval(2)).toBe(2);
+  });
+
+  it('wraps queue movement only when repeat is all', () => {
+    expect(queueIndexAfterStep(1, 3, 1, 'none')).toBe(2);
+    expect(queueIndexAfterStep(2, 3, 1, 'none')).toBeNull();
+    expect(queueIndexAfterStep(0, 3, -1, 'one')).toBeNull();
+    expect(queueIndexAfterStep(2, 3, 1, 'all')).toBe(0);
+    expect(queueIndexAfterStep(0, 3, -1, 'all')).toBe(2);
+  });
+
+  it('repeats the current item or the queue when playback ends', () => {
+    expect(queueIndexAfterComplete(1, 3, 'none')).toBeNull();
+    expect(queueIndexAfterComplete(1, 3, 'one')).toBe(1);
+    expect(queueIndexAfterComplete(2, 3, 'all')).toBe(0);
   });
 });

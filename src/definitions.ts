@@ -125,6 +125,16 @@ export interface AssetStopOptions {
    * Default is 1s.
    */
   fadeOutDuration?: number;
+
+  /**
+   * Deactivate the iOS audio session after this stop.
+   * Set this to `false` when another `play()` follows immediately, so the session stays active.
+   *
+   * @default true
+   * @platform iOS
+   * @since 8.6.0
+   */
+  deactivateAudioSession?: boolean;
 }
 
 export interface AssetPauseOptions {
@@ -296,8 +306,17 @@ export interface PlayOnceOptions {
    * Supported formats:
    * - MP3, WAV (all platforms)
    * - M3U8/HLS streams (iOS and Android)
+   *
+   * Required unless `blob` is set.
    */
-  assetPath: string;
+  assetPath?: string;
+  /**
+   * Audio bytes to play. Web only. When set, this is used instead of `assetPath`.
+   *
+   * @platform web
+   * @since 8.6.0
+   */
+  blob?: Blob;
   /**
    * Volume of the audio, between 0.1 and 1.0
    * @default 1.0
@@ -356,8 +375,17 @@ export interface PreloadOptions {
    * Supported formats:
    * - MP3, WAV (all platforms)
    * - M3U8/HLS streams (iOS and Android)
+   *
+   * Required unless `blob` is set.
    */
-  assetPath: string;
+  assetPath?: string;
+  /**
+   * Audio bytes to play. Web only. When set, this is used instead of `assetPath`.
+   *
+   * @platform web
+   * @since 8.6.0
+   */
+  blob?: Blob;
   /**
    * Asset Id, unique identifier of the file
    */
@@ -525,6 +553,42 @@ export interface QueueChangeEvent {
 }
 
 export type QueueChangeListener = (event: QueueChangeEvent) => void;
+
+export type RepeatMode = 'none' | 'one' | 'all';
+
+export interface SetRepeatModeOptions {
+  /**
+   * `none` stops at the ends of the queue.
+   * `one` replays the current item when it finishes.
+   * `all` plays the next item, wrapping from the last item to the first.
+   *
+   * @default 'none'
+   * @since 8.6.0
+   */
+  mode: RepeatMode;
+}
+
+export interface QueueAddOptions {
+  /**
+   * Tracks to insert into the current queue.
+   */
+  items: QueueItem[];
+  /**
+   * Zero-based index to insert at. Omit to append.
+   */
+  index?: number;
+}
+
+export interface QueueRemoveOptions {
+  /**
+   * Zero-based index to remove.
+   */
+  index?: number;
+  /**
+   * Asset id to remove. Used when `index` is omitted.
+   */
+  assetId?: string;
+}
 
 export interface GetPlaybackStateOptions {
   /**
@@ -741,6 +805,29 @@ export interface NativeAudio {
    * @since 8.5.0
    */
   queueSelect(options: Assets): Promise<QueueState>;
+
+  /**
+   * Insert tracks into the current queue without interrupting the item that is already playing.
+   *
+   * @since 8.6.0
+   */
+  queueAdd(options: QueueAddOptions): Promise<QueueState>;
+
+  /**
+   * Remove a track from the current queue.
+   * If the playing track is removed, playback continues with the track that takes its place, or stops when the queue is empty.
+   *
+   * @since 8.6.0
+   */
+  queueRemove(options: QueueRemoveOptions): Promise<QueueState>;
+
+  /**
+   * Repeat the current item, the whole queue, or neither.
+   * This applies to the current session only.
+   *
+   * @since 8.6.0
+   */
+  setRepeatMode(options: SetRepeatModeOptions): Promise<void>;
 
   /**
    * Prefer the built-in speaker. No effect while headphones or Bluetooth are connected.

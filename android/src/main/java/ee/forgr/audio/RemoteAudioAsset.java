@@ -6,6 +6,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.database.StandaloneDatabaseProvider;
@@ -270,6 +271,21 @@ public class RemoteAudioAsset extends AudioAsset {
             }
             startCurrentTimeUpdates();
         });
+    }
+
+    @Override
+    public void setRate(float rate) throws Exception {
+        final float clamped = clampPlaybackRate(rate);
+        playbackRate = clamped;
+        owner
+            .getActivity()
+            .runOnUiThread(() -> {
+                for (ExoPlayer player : players) {
+                    if (player != null) {
+                        player.setPlaybackParameters(new PlaybackParameters(clamped, 1.0f));
+                    }
+                }
+            });
     }
 
     @Override

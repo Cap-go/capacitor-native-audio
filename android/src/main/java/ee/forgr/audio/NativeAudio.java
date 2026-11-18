@@ -110,6 +110,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     private final Object playbackQueueLock = new Object();
     private final List<JSObject> playbackQueueItems = new ArrayList<>();
     private int playbackQueueIndex = -1;
+    private String repeatMode = QueuePlayback.REPEAT_NONE;
+    private final Set<String> suppressQueueAdvance = ConcurrentHashMap.newKeySet();
     private double configuredProgressIntervalSec = 0.5d;
     private final Map<String, Long> lastProgressEmitMsByAsset = new ConcurrentHashMap<>();
 
@@ -648,6 +650,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             }
 
             AudioAsset asset = audioAssetList.get(audioId);
+            suppressQueueAdvance.remove(audioId);
             if (asset == null) {
                 call.reject(ERROR_AUDIO_ASSET_MISSING + " - " + audioId);
                 return;
@@ -1058,6 +1061,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
     }
 
     public void dispatchComplete(String assetId) {
+        if (assetId != null && suppressQueueAdvance.contains(assetId)) {
+            emitComplete(assetId);
+            return;
+        }
+        if (assetId != null && continueQueueAfterComplete(assetId)) {
+            return;
+        }
+        emitComplete(assetId);
+    }
+
+    private void emitComplete(String assetId) {
         JSObject ret = new JSObject();
         ret.put("assetId", assetId);
         notifyListeners("complete", ret);
@@ -1509,6 +1523,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
 
         AudioAsset asset = audioAssetList.get(audioId);
         if (asset != null) {
+            suppressQueueAdvance.add(audioId);
             if (fadeOut) {
                 asset.stopWithFade(fadeOutDurationMs, false);
             } else {
@@ -1591,7 +1606,9 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             synchronized (playbackQueueLock) {
                 playbackQueueItems.clear();
                 playbackQueueIndex = -1;
+                repeatMode = QueuePlayback.REPEAT_NONE;
             }
+            suppressQueueAdvance.clear();
             refreshQueueMediaSessionActions();
 
             call.resolve();
@@ -2499,8 +2516,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                 call.reject("Queue is empty");
                 return;
             }
-            nextIndex = playbackQueueIndex + delta;
-            if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
+            nextIndex = QueuePlayback.indexAfterStep(playbackQueueIndex, playbackQueueItems.size(), delta, repeatMode);
+            if (nextIndex < 0) {
                 call.reject("Queue boundary reached");
                 return;
             }
@@ -2514,12 +2531,154 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
             if (playbackQueueItems.isEmpty()) {
                 return;
             }
-            nextIndex = playbackQueueIndex + delta;
-            if (nextIndex < 0 || nextIndex >= playbackQueueItems.size()) {
+            nextIndex = QueuePlayback.indexAfterStep(playbackQueueIndex, playbackQueueItems.size(), delta, repeatMode);
+            if (nextIndex < 0) {
                 return;
             }
         }
         selectQueueIndex(nextIndex, reason, null);
+    }
+
+    private boolean continueQueueAfterComplete(String assetId) {
+        final int nextIndex;
+        synchronized (playbackQueueLock) {
+            if (playbackQueueItems.isEmpty() || playbackQueueIndex < 0 || playbackQueueIndex >= playbackQueueItems.size()) {
+                return false;
+            }
+            if (!assetId.equals(playbackQueueItems.get(playbackQueueIndex).getString(ASSET_ID))) {
+                return false;
+            }
+            nextIndex = QueuePlayback.indexAfterComplete(playbackQueueIndex, playbackQueueItems.size(), repeatMode);
+        }
+        if (nextIndex < 0) {
+            return false;
+        }
+        Runnable task = () -> selectQueueIndex(nextIndex, "repeat", null);
+        if (getActivity() != null) {
+            getActivity().runOnUiThread(task);
+        } else {
+            new Handler(Looper.getMainLooper()).post(task);
+        }
+        return true;
+    }
+
+    @PluginMethod
+    public void setRepeatMode(PluginCall call) {
+        String requested = call.getString("mode");
+        String mode = QueuePlayback.normalizeRepeatMode(requested);
+        if (requested == null || !mode.equals(requested)) {
+            call.reject("Repeat mode must be none, one, or all");
+            return;
+        }
+        synchronized (playbackQueueLock) {
+            repeatMode = mode;
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void queueAdd(PluginCall call) {
+        com.getcapacitor.JSArray items = call.getArray("items");
+        if (items == null || items.length() == 0) {
+            call.reject("Queue add requires at least one item");
+            return;
+        }
+        try {
+            List<JSObject> incoming = new ArrayList<>();
+            for (int i = 0; i < items.length(); i++) {
+                JSObject item = JSObject.fromJSONObject(items.getJSONObject(i));
+                if (item != null && queueItemIsValid(item.getString(ASSET_ID), item.getString(ASSET_PATH))) {
+                    incoming.add(item);
+                }
+            }
+            if (incoming.isEmpty()) {
+                call.reject("No valid queue items");
+                return;
+            }
+            synchronized (playbackQueueLock) {
+                if (playbackQueueItems.isEmpty()) {
+                    call.reject("Queue is empty");
+                    return;
+                }
+                int insertAt = playbackQueueItems.size();
+                if (call.getData() != null && call.getData().has("index")) {
+                    insertAt = call.getInt("index", insertAt);
+                }
+                if (insertAt < 0) {
+                    insertAt = 0;
+                }
+                if (insertAt > playbackQueueItems.size()) {
+                    insertAt = playbackQueueItems.size();
+                }
+                playbackQueueItems.addAll(insertAt, incoming);
+                if (playbackQueueIndex >= insertAt) {
+                    playbackQueueIndex += incoming.size();
+                }
+            }
+            refreshQueueMediaSessionActions();
+            call.resolve(buildQueueState());
+        } catch (Exception e) {
+            call.reject("Failed to add queue items: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void queueRemove(PluginCall call) {
+        String assetId = call.getString(ASSET_ID);
+        int requestedIndex = call.getData() != null && call.getData().has("index") ? call.getInt("index", -1) : -1;
+        JSObject removed;
+        int removedIndex;
+        boolean removedCurrent;
+        synchronized (playbackQueueLock) {
+            if (playbackQueueItems.isEmpty()) {
+                call.reject("Queue is empty");
+                return;
+            }
+            removedIndex = requestedIndex;
+            if (removedIndex < 0 && isStringValid(assetId)) {
+                for (int i = 0; i < playbackQueueItems.size(); i++) {
+                    if (assetId.equals(playbackQueueItems.get(i).getString(ASSET_ID))) {
+                        removedIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (removedIndex < 0 || removedIndex >= playbackQueueItems.size()) {
+                call.reject("Queue item was not found");
+                return;
+            }
+            removed = playbackQueueItems.remove(removedIndex);
+            removedCurrent = removedIndex == playbackQueueIndex;
+            if (playbackQueueIndex > removedIndex) {
+                playbackQueueIndex -= 1;
+            }
+            if (playbackQueueItems.isEmpty()) {
+                playbackQueueIndex = -1;
+            } else if (removedCurrent && playbackQueueIndex >= playbackQueueItems.size()) {
+                playbackQueueIndex = playbackQueueItems.size() - 1;
+            }
+        }
+        refreshQueueMediaSessionActions();
+        if (playbackQueueItems.isEmpty()) {
+            if (removedCurrent && removed != null) {
+                try {
+                    stopAudio(removed.getString(ASSET_ID), false, 0);
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to stop removed queue item", e);
+                }
+            }
+            call.resolve(buildQueueState());
+            return;
+        }
+        if (removedCurrent) {
+            int nextIndex;
+            synchronized (playbackQueueLock) {
+                nextIndex = playbackQueueIndex;
+            }
+            selectQueueIndex(nextIndex, "remove", call);
+            return;
+        }
+        call.resolve(buildQueueState());
     }
 
     private void selectQueueIndex(int index, String reason, PluginCall call) {
@@ -2548,6 +2707,7 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
         if (!audioAssetList.containsKey(assetId)) {
             throw new Exception("Queue asset is not loaded");
         }
+        suppressQueueAdvance.remove(assetId);
         if (isStringValid(currentlyPlayingAssetId) && !currentlyPlayingAssetId.equals(assetId)) {
             stopAudio(currentlyPlayingAssetId, false, 0);
         }

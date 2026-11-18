@@ -625,7 +625,7 @@ public class StreamAudioAsset extends AudioAsset {
             .getActivity()
             .runOnUiThread(() -> {
                 logger.debug("Setting playback rate to: " + clamped);
-                player.setPlaybackParameters(new PlaybackParameters(clamped));
+                player.setPlaybackParameters(new PlaybackParameters(clamped, 1.0f));
             });
     }
 
