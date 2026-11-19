@@ -20,3 +20,7 @@ All changes in 8.5 are **additive**. Existing `preload`, `play`, and event names
 ## Lock screen
 
 Enable `configure({ showNotification: true })` and pass `notificationMetadata` on preload or queue items for artwork and titles.
+
+`seekBackwardSeconds` and `seekForwardSeconds` change the skip interval. The default is 15 seconds.
+
+On Android, `backgroundPlayback: true` with `showNotification: true` starts the plugin media foreground service. Add `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and `WAKE_LOCK` to the app manifest. See the README Android Background Playback section.

@@ -74,6 +74,103 @@ extension NativeAudio {
         advanceQueue(by: -1, call: call, reason: "previous")
     }
 
+    @objc func setRepeatMode(_ call: CAPPluginCall) {
+        guard let mode = call.getString("mode"), mode == "none" || mode == "one" || mode == "all" else {
+            call.reject("Repeat mode must be none, one, or all")
+            return
+        }
+        executeOnAudioQueue {
+            self.repeatMode = mode
+            call.resolve()
+        }
+    }
+
+    @objc func queueAdd(_ call: CAPPluginCall) {
+        guard let rawItems = call.getArray("items", JSObject.self), !rawItems.isEmpty else {
+            call.reject("Queue add requires at least one item")
+            return
+        }
+        let requestedIndex = call.getInt("index")
+        executeOnAudioQueue {
+            guard !self.playbackQueueIds.isEmpty else {
+                call.reject("Queue is empty")
+                return
+            }
+            var incoming: [(String, [String: Any])] = []
+            for item in rawItems {
+                guard let assetId = item["assetId"] as? String,
+                      let assetPath = item["assetPath"] as? String,
+                      !assetId.isEmpty, !assetPath.isEmpty else {
+                    continue
+                }
+                incoming.append((assetId, item))
+            }
+            guard !incoming.isEmpty else {
+                call.reject("No valid queue items")
+                return
+            }
+            var insertAt = requestedIndex ?? self.playbackQueueIds.count
+            if insertAt < 0 {
+                insertAt = 0
+            }
+            if insertAt > self.playbackQueueIds.count {
+                insertAt = self.playbackQueueIds.count
+            }
+            for (offset, entry) in incoming.enumerated() {
+                self.playbackQueueIds.insert(entry.0, at: insertAt + offset)
+                self.playbackQueueItemById[entry.0] = entry.1
+            }
+            if self.playbackQueueIndex >= insertAt {
+                self.playbackQueueIndex += incoming.count
+            }
+            self.refreshQueueRemoteCommands()
+            call.resolve(self.buildQueueStateDictionary())
+        }
+    }
+
+    @objc func queueRemove(_ call: CAPPluginCall) {
+        let assetId = call.getString(Constant.AssetIdKey)
+        let requestedIndex = call.getInt("index")
+        executeOnAudioQueue {
+            guard !self.playbackQueueIds.isEmpty else {
+                call.reject("Queue is empty")
+                return
+            }
+            var index = requestedIndex ?? -1
+            if index < 0, let assetId {
+                index = self.playbackQueueIds.firstIndex(of: assetId) ?? -1
+            }
+            guard index >= 0, index < self.playbackQueueIds.count else {
+                call.reject("Queue item was not found")
+                return
+            }
+            let removedId = self.playbackQueueIds.remove(at: index)
+            self.playbackQueueItemById.removeValue(forKey: removedId)
+            let removedCurrent = index == self.playbackQueueIndex
+            if self.playbackQueueIndex > index {
+                self.playbackQueueIndex -= 1
+            }
+            if self.playbackQueueIds.isEmpty {
+                self.playbackQueueIndex = -1
+                self.refreshQueueRemoteCommands()
+                if removedCurrent, let asset = self.audioList[removedId] as? AudioAsset {
+                    asset.stop()
+                }
+                call.resolve(self.buildQueueStateDictionary())
+                return
+            }
+            if removedCurrent {
+                if self.playbackQueueIndex < 0 || self.playbackQueueIndex >= self.playbackQueueIds.count {
+                    self.playbackQueueIndex = self.playbackQueueIds.count - 1
+                }
+                self.selectQueueIndex(self.playbackQueueIndex, call: call, reason: "remove")
+                return
+            }
+            self.refreshQueueRemoteCommands()
+            call.resolve(self.buildQueueStateDictionary())
+        }
+    }
+
     @objc func queueSelect(_ call: CAPPluginCall) {
         guard let assetId = call.getString(Constant.AssetIdKey) else {
             call.reject(Constant.ErrorAssetId)
@@ -177,11 +274,25 @@ extension NativeAudio {
         commandCenter.previousTrackCommand.isEnabled = hasQueue
     }
 
+    internal func continueQueueAfterCompletion(assetId: String) -> Bool {
+        guard playbackQueueIndex >= 0, playbackQueueIndex < playbackQueueIds.count else { return false }
+        guard playbackQueueIds[playbackQueueIndex] == assetId else { return false }
+        if repeatMode == "one" {
+            playQueueAsset(assetId: assetId, reason: "repeat")
+            return true
+        }
+        if repeatMode == "all" {
+            let next = playbackQueueIndex + 1
+            let index = next >= playbackQueueIds.count ? 0 : next
+            selectQueueIndex(index, call: nil, reason: "repeat")
+            return true
+        }
+        return false
+    }
+
     private func advanceQueueFromRemote(delta: Int) {
         executeOnAudioQueue {
-            guard !self.playbackQueueIds.isEmpty else { return }
-            let nextIndex = self.playbackQueueIndex + delta
-            guard nextIndex >= 0, nextIndex < self.playbackQueueIds.count else { return }
+            guard let nextIndex = self.queueIndex(after: delta) else { return }
             self.selectQueueIndex(nextIndex, call: nil, reason: delta > 0 ? "remoteNext" : "remotePrevious")
         }
     }
@@ -192,13 +303,23 @@ extension NativeAudio {
                 call.reject("Queue is empty")
                 return
             }
-            let nextIndex = self.playbackQueueIndex + delta
-            guard nextIndex >= 0, nextIndex < self.playbackQueueIds.count else {
+            guard let nextIndex = self.queueIndex(after: delta) else {
                 call.reject("Queue boundary reached")
                 return
             }
             self.selectQueueIndex(nextIndex, call: call, reason: reason)
         }
+    }
+
+    private func queueIndex(after delta: Int) -> Int? {
+        let count = playbackQueueIds.count
+        guard count > 0 else { return nil }
+        let next = playbackQueueIndex + delta
+        if next >= 0 && next < count {
+            return next
+        }
+        guard repeatMode == "all" else { return nil }
+        return next < 0 ? count - 1 : 0
     }
 
     private func selectQueueIndex(_ index: Int, call: CAPPluginCall?, reason: String) {

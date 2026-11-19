@@ -105,7 +105,7 @@ public class AudioDispatcher
     }
 
     public void setRate(float rate) throws Exception {
-        mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(rate));
+        mediaPlayer.setPlaybackParams(mediaPlayer.getPlaybackParams().setSpeed(rate).setPitch(1.0f));
     }
 
     public void loop() throws Exception {

@@ -104,6 +104,53 @@ describe('NativeAudio web queue and playback state', () => {
     await handle.remove();
   }, 10000);
 
+  it('queueAdd_appendsAndQueueRemove_dropsAnItem', async () => {
+    const first = blobAudioUrl();
+    const second = blobAudioUrl();
+    const third = blobAudioUrl();
+    await NativeAudio.setQueue({
+      items: [
+        { assetId: 'a1', assetPath: first, isUrl: true },
+        { assetId: 'a2', assetPath: second, isUrl: true },
+      ],
+      autoPlay: false,
+    });
+
+    const added = await NativeAudio.queueAdd({
+      items: [{ assetId: 'a3', assetPath: third, isUrl: true }],
+    });
+    expect(added.count).toBe(3);
+    expect(added.assetIds).toEqual(['a1', 'a2', 'a3']);
+
+    const removed = await NativeAudio.queueRemove({ assetId: 'a2' });
+    expect(removed.count).toBe(2);
+    expect(removed.assetIds).toEqual(['a1', 'a3']);
+  }, 10000);
+
+  it('setRepeatMode_all_wrapsQueueNext', async () => {
+    const first = blobAudioUrl();
+    const second = blobAudioUrl();
+    await NativeAudio.setQueue({
+      items: [
+        { assetId: 'r1', assetPath: first, isUrl: true },
+        { assetId: 'r2', assetPath: second, isUrl: true },
+      ],
+      startIndex: 1,
+      autoPlay: false,
+    });
+    await NativeAudio.setRepeatMode({ mode: 'all' });
+    const wrapped = await NativeAudio.queueNext();
+    expect(wrapped.index).toBe(0);
+    expect(wrapped.assetId).toBe('r1');
+  }, 10000);
+
+  it('preload_acceptsBlobOnWeb', async () => {
+    const blob = new Blob([new Uint8Array(44)], { type: 'audio/wav' });
+    await NativeAudio.preload({ assetId: 'blob-1', blob });
+    const found = await NativeAudio.isPreloaded({ assetId: 'blob-1' });
+    expect(found.found).toBe(true);
+  }, 10000);
+
   it('clearQueue_resetsQueueAndQueueNextRejects', async () => {
     const url = blobAudioUrl();
     await NativeAudio.setQueue({

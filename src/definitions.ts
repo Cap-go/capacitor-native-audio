@@ -125,6 +125,16 @@ export interface AssetStopOptions {
    * Default is 1s.
    */
   fadeOutDuration?: number;
+
+  /**
+   * Deactivate the iOS audio session after this stop.
+   * Set this to `false` when another `play()` follows immediately, so the session stays active.
+   *
+   * @default true
+   * @platform iOS
+   * @since 8.6.0
+   */
+  deactivateAudioSession?: boolean;
 }
 
 export interface AssetPauseOptions {
@@ -207,31 +217,54 @@ export interface ConfigureOptions {
    */
   progressInterval?: number;
   /**
+   * Seconds to skip backward from the notification, lock screen, Control Center, and headset.
+   * Values of `0` or less use the default.
+   *
+   * @default 15
+   * @since 8.6.0
+   */
+  seekBackwardSeconds?: number;
+  /**
+   * Seconds to skip forward from the notification, lock screen, Control Center, and headset.
+   * Values of `0` or less use the default.
+   *
+   * @default 15
+   * @since 8.6.0
+   */
+  seekForwardSeconds?: number;
+  /**
    * Enable background audio playback (Android only)
    *
    * When enabled, audio will continue playing when the app is backgrounded or the screen is locked.
-   * The plugin will skip the automatic pause/resume logic that normally occurs when the app
+   * The plugin skips the automatic pause/resume logic that normally runs when the app
    * enters the background or returns to the foreground.
    *
-   * **Important Android Requirements:**
-   * To use background playback on Android, your app must:
-   * 1. Declare the required permissions in `AndroidManifest.xml`:
-   *    - `<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />`
-   *    - `<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />`
-   *    - `<uses-permission android:name="android.permission.WAKE_LOCK" />`
-   * 2. Start a Foreground Service with a media-style notification before backgrounding
-   *    (the plugin does not automatically create or manage the foreground service)
-   * 3. Use `showNotification: true` to display playback controls in the notification
+   * With `showNotification: true`, the plugin also starts `AudioPlaybackService` and posts the
+   * media notification as a foreground service notification. That keeps the process eligible
+   * to continue playback. The service is registered by the plugin. The app still has to declare
+   * the permissions below. If those permissions are missing, playback starts, but Android may
+   * stop it in the background.
    *
-   * **Usage Example:**
+   * **Android manifest**
+   * ```xml
+   * <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+   * <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+   * <uses-permission android:name="android.permission.WAKE_LOCK" />
+   * ```
+   *
+   * `WAKE_LOCK` lets the service keep the CPU awake while audio is playing.
+   *
+   * **Usage**
    * ```typescript
    * await NativeAudio.configure({
    *   backgroundPlayback: true,
-   *   showNotification: true
+   *   showNotification: true,
+   *   seekBackwardSeconds: 15,
+   *   seekForwardSeconds: 30
    * });
-   * // Start your foreground service here
-   * // Then preload and play audio as normal
    * ```
+   *
+   * On iOS, background playback uses the Audio background mode. `backgroundPlayback` is ignored there.
    *
    * @default false
    * @platform Android
@@ -273,8 +306,17 @@ export interface PlayOnceOptions {
    * Supported formats:
    * - MP3, WAV (all platforms)
    * - M3U8/HLS streams (iOS and Android)
+   *
+   * Required unless `blob` is set.
    */
-  assetPath: string;
+  assetPath?: string;
+  /**
+   * Audio bytes to play. Web only. When set, this is used instead of `assetPath`.
+   *
+   * @platform web
+   * @since 8.6.0
+   */
+  blob?: Blob;
   /**
    * Volume of the audio, between 0.1 and 1.0
    * @default 1.0
@@ -333,8 +375,17 @@ export interface PreloadOptions {
    * Supported formats:
    * - MP3, WAV (all platforms)
    * - M3U8/HLS streams (iOS and Android)
+   *
+   * Required unless `blob` is set.
    */
-  assetPath: string;
+  assetPath?: string;
+  /**
+   * Audio bytes to play. Web only. When set, this is used instead of `assetPath`.
+   *
+   * @platform web
+   * @since 8.6.0
+   */
+  blob?: Blob;
   /**
    * Asset Id, unique identifier of the file
    */
@@ -502,6 +553,42 @@ export interface QueueChangeEvent {
 }
 
 export type QueueChangeListener = (event: QueueChangeEvent) => void;
+
+export type RepeatMode = 'none' | 'one' | 'all';
+
+export interface SetRepeatModeOptions {
+  /**
+   * `none` stops at the ends of the queue.
+   * `one` replays the current item when it finishes.
+   * `all` plays the next item, wrapping from the last item to the first.
+   *
+   * @default 'none'
+   * @since 8.6.0
+   */
+  mode: RepeatMode;
+}
+
+export interface QueueAddOptions {
+  /**
+   * Tracks to insert into the current queue.
+   */
+  items: QueueItem[];
+  /**
+   * Zero-based index to insert at. Omit to append.
+   */
+  index?: number;
+}
+
+export interface QueueRemoveOptions {
+  /**
+   * Zero-based index to remove.
+   */
+  index?: number;
+  /**
+   * Asset id to remove. Used when `index` is omitted.
+   */
+  assetId?: string;
+}
 
 export interface GetPlaybackStateOptions {
   /**
@@ -718,6 +805,29 @@ export interface NativeAudio {
    * @since 8.5.0
    */
   queueSelect(options: Assets): Promise<QueueState>;
+
+  /**
+   * Insert tracks into the current queue without interrupting the item that is already playing.
+   *
+   * @since 8.6.0
+   */
+  queueAdd(options: QueueAddOptions): Promise<QueueState>;
+
+  /**
+   * Remove a track from the current queue.
+   * If the playing track is removed, playback continues with the track that takes its place, or stops when the queue is empty.
+   *
+   * @since 8.6.0
+   */
+  queueRemove(options: QueueRemoveOptions): Promise<QueueState>;
+
+  /**
+   * Repeat the current item, the whole queue, or neither.
+   * This applies to the current session only.
+   *
+   * @since 8.6.0
+   */
+  setRepeatMode(options: SetRepeatModeOptions): Promise<void>;
 
   /**
    * Prefer the built-in speaker. No effect while headphones or Bluetooth are connected.

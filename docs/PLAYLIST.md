@@ -14,7 +14,21 @@ await NativeAudio.configure({
 });
 ```
 
-`backgroundPlayback: true` skips the plugin pause or resume logic when the app backgrounds. On Android it does **not** start a foreground service. You still need manifest permissions (`FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK`) and your own media foreground service before relying on background playback. See README Notification Center Display.
+`backgroundPlayback: true` skips the plugin pause or resume logic when the app backgrounds. On Android, together with `showNotification: true`, it starts the plugin media foreground service. The app manifest still needs `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and `WAKE_LOCK`. See README Android Background Playback.
+
+```typescript
+await NativeAudio.setRepeatMode({ mode: 'all' });
+await NativeAudio.queueAdd({
+  items: [{ assetId: 'ep-3', assetPath: 'https://example.com/ep3.mp3', isUrl: true }],
+});
+await NativeAudio.queueRemove({ assetId: 'ep-1' });
+```
+
+`mode` is `none`, `one`, or `all`. `none` stops at either end of the queue. `one` replays the current item. `all` wraps next and previous, and starts the next item when the current one finishes.
+
+On web, `preload` and `playOnce` accept a `blob` instead of `assetPath`.
+
+On iOS, `stop({ assetId, deactivateAudioSession: false })` leaves the audio session active so the next `play()` does not have to reactivate it.
 
 ```typescript
 await NativeAudio.addListener('queueChange', ({ assetId, index, reason }) => {
