@@ -27,11 +27,28 @@ function walk(dir) {
   });
 }
 
-// TypeScript's own pre-processor lists real import/export/dynamic-import specifiers
-// (with offsets) and ignores comments and ordinary string literals.
-function relativeSpecifiers(code) {
-  const { importedFiles } = ts.preProcessFile(code, true, true);
-  return importedFiles.filter((f) => /^\.{1,2}\//.test(f.fileName));
+// Walks the TypeScript AST so every module specifier is seen (import/export declarations,
+// `export * as ns from`, `import x = require()`, `import()` calls and `import('...')` types)
+// while comments and ordinary string literals are ignored.
+function relativeSpecifiers(code, file) {
+  const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, true, kind);
+  const found = [];
+  const add = (lit) => {
+    if (lit && ts.isStringLiteralLike(lit) && /^\.{1,2}\//.test(lit.text)) {
+      found.push({ fileName: lit.text, pos: lit.getStart(sf) + 1 });
+    }
+  };
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
+    else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      add(node.moduleReference.expression);
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) add(node.arguments[0]);
+    else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) add(node.argument.literal);
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
 }
 
 function resolveSpecifier(file, spec) {
@@ -50,11 +67,10 @@ const findings = [];
 for (const file of walk(srcDir)) {
   const code = readFileSync(file, 'utf8');
   const edits = [];
-  for (const ref of relativeSpecifiers(code)) {
+  for (const ref of relativeSpecifiers(code, file)) {
     const spec = ref.fileName;
     if (OK_EXT.test(spec)) continue;
-    // `pos` may point at the opening quote depending on the TypeScript version.
-    const start = /['"`]/.test(code[ref.pos]) ? ref.pos + 1 : ref.pos;
+    const start = ref.pos;
     if (code.slice(start, start + spec.length) !== spec) throw new Error(`offset mismatch in ${file} for '${spec}'`);
     const line = code.slice(0, start).split('\n').length;
     const suggestion = resolveSpecifier(file, spec);

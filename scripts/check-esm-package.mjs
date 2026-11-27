@@ -55,7 +55,11 @@ try {
   // so the export diff only works when both builds can load as a web consumer app would.
   for (const [name, range] of Object.entries(pkg.peerDependencies ?? {})) deps.push(`${name}@${range}`);
   if (dom) deps.push(HAPPY_DOM);
+  // Only a confirmed E404 means "never published"; any other registry error fails the gate.
   const published = run('npm', ['view', pkg.name, 'version'], work, { allowFail: true });
+  if (published.status !== 0 && !/\bE404\b/.test(published.stderr)) {
+    throw new Error(`npm view ${pkg.name} failed, cannot diff exports:\n${published.stderr.trim()}`);
+  }
   const prevVersion = published.status === 0 ? published.stdout.trim() : null;
   if (prevVersion) deps.push(`${PREV}@npm:${pkg.name}@${prevVersion}`);
   run('npm', ['install', '--no-audit', '--no-fund', '--legacy-peer-deps', '--loglevel=error', ...deps], work);
@@ -106,7 +110,7 @@ try {
   }
 
   if (!prevVersion) {
-    console.log('  previous release: not on npm, export diff skipped');
+    console.log('  previous release: not on npm (E404), export diff skipped');
   } else {
     const prevPkg = JSON.parse(readFileSync(join(work, 'node_modules', PREV, 'package.json'), 'utf8'));
     const prevSubs =
