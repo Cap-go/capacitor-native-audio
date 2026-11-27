@@ -75,4 +75,4 @@ package-lock.json
 .maestro/results/
 
 # Generated scripts
-scripts/configure-dependencies.js
+scripts/configure-dependencies.mjs

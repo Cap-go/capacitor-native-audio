@@ -22,8 +22,9 @@
  * - process.cwd(): Plugin root directory
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Get environment variables
 const PLUGIN_ROOT = process.cwd();
@@ -254,8 +255,21 @@ function main(): void {
   }
 }
 
-// Run if executed directly
-if (require.main === module) {
+// Run if executed directly (ESM equivalent of `require.main === module`).
+// realpath keeps this working when node_modules entries are symlinks (pnpm, file: installs).
+function isExecutedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  try {
+    return import.meta.url === pathToFileURL(fs.realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isExecutedDirectly()) {
   main();
 }
 
