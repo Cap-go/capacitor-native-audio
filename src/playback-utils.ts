@@ -1,4 +1,4 @@
-import type { PlaybackStateValue } from './definitions';
+import type { PlaybackStateValue } from './definitions.js';
 
 export const MIN_PLAYBACK_RATE = 0.25;
 export const MAX_PLAYBACK_RATE = 4;

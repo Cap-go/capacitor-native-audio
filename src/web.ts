@@ -1,6 +1,6 @@
 import { WebPlugin } from '@capacitor/core';
 
-import { AudioAsset } from './audio-asset';
+import { AudioAsset } from './audio-asset.js';
 import type {
   Assets,
   AssetPauseOptions,
@@ -25,8 +25,8 @@ import type {
   RepeatMode,
   SetQueueOptions,
   SetRepeatModeOptions,
-} from './definitions';
-import { NativeAudio } from './definitions';
+} from './definitions.js';
+import { NativeAudio } from './definitions.js';
 import {
   clampPlaybackRate,
   DEFAULT_PROGRESS_INTERVAL_SEC,
@@ -34,7 +34,7 @@ import {
   normalizeRepeatMode,
   queueIndexAfterComplete,
   queueIndexAfterStep,
-} from './playback-utils';
+} from './playback-utils.js';
 
 type AudioAssetData = {
   fadeOut?: boolean;

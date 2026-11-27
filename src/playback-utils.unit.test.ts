@@ -5,7 +5,7 @@ import {
   normalizeProgressInterval,
   queueIndexAfterComplete,
   queueIndexAfterStep,
-} from './playback-utils';
+} from './playback-utils.js';
 
 describe('playback-utils', () => {
   it('clamps rates to the native supported range', () => {

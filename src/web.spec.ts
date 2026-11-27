@@ -1,4 +1,4 @@
-import { NativeAudio } from './web';
+import { NativeAudio } from './web.js';
 
 export class Test {
   /**
