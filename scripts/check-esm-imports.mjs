@@ -43,7 +43,8 @@ function relativeSpecifiers(code, file) {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) add(node.moduleSpecifier);
     else if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       add(node.moduleReference.expression);
-    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) add(node.arguments[0]);
+    } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
+      add(node.arguments[0]);
     else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) add(node.argument.literal);
     ts.forEachChild(node, visit);
   };
@@ -79,7 +80,8 @@ for (const file of walk(srcDir)) {
   }
   if (fix && edits.length) {
     let out = code;
-    for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.suggestion + out.slice(e.end);
+    for (const e of edits.sort((a, b) => b.start - a.start))
+      out = out.slice(0, e.start) + e.suggestion + out.slice(e.end);
     writeFileSync(file, out);
   }
 }

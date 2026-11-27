@@ -45,7 +45,9 @@ const spec = (name, sub) => (sub === '.' ? name : `${name}/${sub.slice(2)}`);
 
 const work = mkdtempSync(join(tmpdir(), 'esm-gate-'));
 try {
-  console.log(`check-esm-package: ${pkg.name}@${pkg.version} (${dom ? 'happy-dom' : 'bare node'}), node ${process.version}`);
+  console.log(
+    `check-esm-package: ${pkg.name}@${pkg.version} (${dom ? 'happy-dom' : 'bare node'}), node ${process.version}`,
+  );
   run('npm', ['pack', '--silent', '--pack-destination', work], root);
   const tgz = readdirSync(work).find((f) => f.endsWith('.tgz'));
   writeFileSync(join(work, 'package.json'), JSON.stringify({ name: 'esm-gate', private: true }) + '\n');
@@ -55,9 +57,9 @@ try {
   // so the export diff only works when both builds can load as a web consumer app would.
   for (const [name, range] of Object.entries(pkg.peerDependencies ?? {})) deps.push(`${name}@${range}`);
   if (dom) deps.push(HAPPY_DOM);
-  // Only a confirmed E404 means "never published"; any other registry error fails the gate.
+  // Only npm's own error-code line saying E404 means "never published"; any other registry error fails the gate.
   const published = run('npm', ['view', pkg.name, 'version'], work, { allowFail: true });
-  if (published.status !== 0 && !/\bE404\b/.test(published.stderr)) {
+  if (published.status !== 0 && !/^npm (?:error|ERR!) code E404$/m.test(published.stderr)) {
     throw new Error(`npm view ${pkg.name} failed, cannot diff exports:\n${published.stderr.trim()}`);
   }
   const prevVersion = published.status === 0 ? published.stdout.trim() : null;
@@ -70,7 +72,7 @@ try {
     preload.push('--no-experimental-detect-module');
   }
   for (const sub of subpaths) {
-    const target = sub === '.' && !pkg.exports ? pkg.main : pkg.exports?.[sub]?.import ?? pkg.exports?.[sub];
+    const target = sub === '.' && !pkg.exports ? pkg.main : (pkg.exports?.[sub]?.import ?? pkg.exports?.[sub]);
     if (typeof target === 'string' && !target.endsWith('.mjs') && pkg.type !== 'module') {
       failures.push(`'${sub}' -> ${target} is .js but package.json has no "type": "module"`);
     }
