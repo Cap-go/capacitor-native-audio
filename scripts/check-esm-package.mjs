@@ -34,7 +34,14 @@ const DEADLINE = Date.now() + 600000;
 function run(cmd, args, cwd, { allowFail = false } = {}) {
   const timeout = DEADLINE - Date.now();
   if (timeout <= 0) throw new Error(`${cmd} ${args.join(' ')} not started: 10 minute gate deadline reached`);
-  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', timeout, env: { ...process.env, NODE_OPTIONS: '' } });
+  // SIGKILL: a child that ignores SIGTERM must not keep spawnSync waiting past the deadline.
+  const r = spawnSync(cmd, args, {
+    cwd,
+    encoding: 'utf8',
+    timeout,
+    killSignal: 'SIGKILL',
+    env: { ...process.env, NODE_OPTIONS: '' },
+  });
   if (r.error?.code === 'ETIMEDOUT' || r.signal) {
     throw new Error(`${cmd} ${args.join(' ')} did not finish within the 10 minute gate deadline`);
   }
