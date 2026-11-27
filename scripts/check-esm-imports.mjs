@@ -10,13 +10,13 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
+import ts from 'typescript';
+
 const root = process.cwd();
 const srcDir = join(root, 'src');
 const fix = process.argv.includes('--fix');
 const SOURCE = /\.(ts|tsx|mts)$/;
 const OK_EXT = /\.(js|mjs|json|css)$/;
-// static `from '...'`, side-effect `import '...'`, dynamic `import('...')`
-const PATTERN = /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(['"])(\.{1,2}\/[^'"\n]*)\2/g;
 
 function walk(dir) {
   if (!existsSync(dir)) return [];
@@ -27,9 +27,11 @@ function walk(dir) {
   });
 }
 
-function blankComments(code) {
-  // Replace comment bodies with spaces (keeps offsets) so examples in comments are ignored.
-  return code.replace(/\/\*[\s\S]*?\*\/|(^|[^:'"`\\])\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+// TypeScript's own pre-processor lists real import/export/dynamic-import specifiers
+// (with offsets) and ignores comments and ordinary string literals.
+function relativeSpecifiers(code) {
+  const { importedFiles } = ts.preProcessFile(code, true, true);
+  return importedFiles.filter((f) => /^\.{1,2}\//.test(f.fileName));
 }
 
 function resolveSpecifier(file, spec) {
@@ -47,12 +49,13 @@ function resolveSpecifier(file, spec) {
 const findings = [];
 for (const file of walk(srcDir)) {
   const code = readFileSync(file, 'utf8');
-  const scan = blankComments(code);
   const edits = [];
-  for (const m of scan.matchAll(PATTERN)) {
-    const spec = m[3];
+  for (const ref of relativeSpecifiers(code)) {
+    const spec = ref.fileName;
     if (OK_EXT.test(spec)) continue;
-    const start = m.index + m[1].length + 1;
+    // `pos` may point at the opening quote depending on the TypeScript version.
+    const start = /['"`]/.test(code[ref.pos]) ? ref.pos + 1 : ref.pos;
+    if (code.slice(start, start + spec.length) !== spec) throw new Error(`offset mismatch in ${file} for '${spec}'`);
     const line = code.slice(0, start).split('\n').length;
     const suggestion = resolveSpecifier(file, spec);
     findings.push({ file: relative(root, file), line, spec, suggestion });
@@ -60,7 +63,7 @@ for (const file of walk(srcDir)) {
   }
   if (fix && edits.length) {
     let out = code;
-    for (const e of edits.reverse()) out = out.slice(0, e.start) + e.suggestion + out.slice(e.end);
+    for (const e of edits.sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.suggestion + out.slice(e.end);
     writeFileSync(file, out);
   }
 }
