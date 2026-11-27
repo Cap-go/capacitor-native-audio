@@ -12,7 +12,7 @@
  *   - an entry is `.js` without `"type": "module"` (imports also run with --no-experimental-detect-module)
  *   - `require('<pkg>')` is not refused (ERR_PACKAGE_PATH_NOT_EXPORTED / ERR_REQUIRE_ESM)
  *   - an export name (or a whole subpath) present in the last published npm version is missing
- * Run after `build`. Needs npm and registry access (installs @capacitor/core, the previous
+ * Run after `build`. Needs bun, node and registry access (installs @capacitor/core, the previous
  * release and happy-dom into the temp dir only).
  */
 import { spawnSync } from 'node:child_process';
@@ -28,8 +28,17 @@ const PREV = 'esm-gate-previous';
 const failures = [];
 const CJS_INTEROP = new Set(['default', 'module.exports']);
 
+// Repo timeout policy: the whole gate gets at most 10 minutes; each subprocess gets what is left.
+const DEADLINE = Date.now() + 600000;
+
 function run(cmd, args, cwd, { allowFail = false } = {}) {
-  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', env: { ...process.env, NODE_OPTIONS: '' } });
+  const timeout = DEADLINE - Date.now();
+  if (timeout <= 0) throw new Error(`${cmd} ${args.join(' ')} not started: 10 minute gate deadline reached`);
+  const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', timeout, env: { ...process.env, NODE_OPTIONS: '' } });
+  if (r.error?.code === 'ETIMEDOUT' || r.signal) {
+    throw new Error(`${cmd} ${args.join(' ')} did not finish within the 10 minute gate deadline`);
+  }
+  if (r.error) throw r.error;
   if (!allowFail && r.status !== 0) {
     throw new Error(`${cmd} ${args.join(' ')} failed (${r.status}):\n${r.stdout}\n${r.stderr}`);
   }
@@ -48,7 +57,8 @@ try {
   console.log(
     `check-esm-package: ${pkg.name}@${pkg.version} (${dom ? 'happy-dom' : 'bare node'}), node ${process.version}`,
   );
-  run('npm', ['pack', '--silent', '--pack-destination', work], root);
+  // Bun only (repo rule: no npm/npx); Node is used just for the ESM loading checks.
+  run('bun', ['pm', 'pack', '--quiet', '--ignore-scripts', '--destination', work], root);
   const tgz = readdirSync(work).find((f) => f.endsWith('.tgz'));
   writeFileSync(join(work, 'package.json'), JSON.stringify({ name: 'esm-gate', private: true }) + '\n');
 
@@ -57,14 +67,14 @@ try {
   // so the export diff only works when both builds can load as a web consumer app would.
   for (const [name, range] of Object.entries(pkg.peerDependencies ?? {})) deps.push(`${name}@${range}`);
   if (dom) deps.push(HAPPY_DOM);
-  // Only npm's own error-code line saying E404 means "never published"; any other registry error fails the gate.
-  const published = run('npm', ['view', pkg.name, 'version'], work, { allowFail: true });
-  if (published.status !== 0 && !/^npm (?:error|ERR!) code E404$/m.test(published.stderr)) {
-    throw new Error(`npm view ${pkg.name} failed, cannot diff exports:\n${published.stderr.trim()}`);
+  // Only the registry's own "404 Not Found" line means "never published"; any other lookup error fails the gate.
+  const published = run('bun', ['info', pkg.name, 'version'], work, { allowFail: true });
+  if (published.status !== 0 && !/^404 Not Found: /m.test(published.stderr)) {
+    throw new Error(`bun info ${pkg.name} failed, cannot diff exports:\n${published.stderr.trim()}`);
   }
   const prevVersion = published.status === 0 ? published.stdout.trim() : null;
   if (prevVersion) deps.push(`${PREV}@npm:${pkg.name}@${prevVersion}`);
-  run('npm', ['install', '--no-audit', '--no-fund', '--legacy-peer-deps', '--loglevel=error', ...deps], work);
+  run('bun', ['add', '--no-save', '--silent', ...deps], work);
 
   // Never rely on Node's module-syntax detection: ESM must be declared ("type": "module" or .mjs).
   const preload = [];
@@ -112,7 +122,7 @@ try {
   }
 
   if (!prevVersion) {
-    console.log('  previous release: not on npm (E404), export diff skipped');
+    console.log('  previous release: not on npm (404), export diff skipped');
   } else {
     const prevPkg = JSON.parse(readFileSync(join(work, 'node_modules', PREV, 'package.json'), 'utf8'));
     const prevSubs =
