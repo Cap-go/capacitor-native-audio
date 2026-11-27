@@ -8,7 +8,7 @@ This file provides guidance to AI agents and contributors working on this Capaci
 # Install dependencies
 bun install
 
-# Build the plugin (TypeScript + Rollup + docgen)
+# Build the plugin (TypeScript + docgen, ESM only)
 bun run build
 
 # Full verification (iOS, Android, Web)
@@ -24,7 +24,7 @@ bun run lint
 ## Development Workflow
 
 1. **Install** - `bun install` (never use npm)
-2. **Build** - `bun run build` compiles TypeScript, generates docs, and bundles with Rollup
+2. **Build** - `bun run build` generates docs and compiles TypeScript to ESM (`dist/esm`); no CommonJS or IIFE bundles are shipped
 3. **Verify** - `bun run verify` builds for iOS, Android, and Web. Always run this before submitting work
 4. **Format** - `bun run fmt` auto-fixes ESLint, Prettier, and SwiftLint issues
 5. **Lint** - `bun run lint` checks code quality without modifying files

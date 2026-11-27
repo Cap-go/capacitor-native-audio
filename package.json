@@ -3,10 +3,17 @@
   "version": "8.5.6",
   "description": "A native plugin for native audio engine",
   "license": "MPL-2.0",
-  "main": "dist/plugin.cjs.js",
+  "type": "module",
+  "main": "dist/esm/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
-  "unpkg": "dist/plugin.js",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "android/src/main/",
     "android/build.gradle",
@@ -16,7 +23,7 @@
     "ios/Tests",
     "Package.swift",
     "CapgoCapacitorNativeAudio.podspec",
-    "scripts/configure-dependencies.js"
+    "scripts/configure-dependencies.mjs"
   ],
   "author": "Martin Donadieu",
   "repository": {
@@ -36,11 +43,11 @@
     "native"
   ],
   "scripts": {
-    "capacitor:sync:after": "node scripts/configure-dependencies.js",
+    "capacitor:sync:after": "node scripts/configure-dependencies.mjs",
     "verify": "bun run verify:ios && bun run verify:android && bun run verify:web",
     "verify:ios": "bash scripts/verify-ios-spm.sh",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
-    "verify:web": "bun run build && bun run test:web",
+    "verify:web": "bun run build && bun run test:web && bun run check:esm-package",
     "test": "bun run test:web && bun run test:ios",
     "test:web": "vitest run",
     "test:ios": "cd ios && xcodebuild test -workspace Plugin.xcworkspace -scheme Plugin -destination 'platform=iOS Simulator,name=iPhone 16' && cd ..",
@@ -50,7 +57,9 @@
     "prettier": "prettier-pretty-check \"**/*.{css,html,ts,js,java}\" --plugin=prettier-plugin-java",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api NativeAudio --output-readme README.md --output-json dist/docs.json",
-    "build": "bun run clean && bun run docgen && bun run build:scripts && tsc && rollup -c rollup.config.mjs",
+    "build": "bun run check:esm-imports && bun run clean && bun run docgen && bun run build:scripts && tsc",
+    "check:esm-imports": "node scripts/check-esm-imports.mjs",
+    "check:esm-package": "node scripts/check-esm-package.mjs",
     "build:scripts": "tsc -p scripts/tsconfig.json",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
@@ -80,7 +89,6 @@
     "prettier": "^3.6.2",
     "prettier-plugin-java": "^2.7.7",
     "rimraf": "^6.1.0",
-    "rollup": "^4.53.2",
     "swiftlint": "^2.0.0",
     "typescript": "^6.0.3",
     "vitest": "^3.2.4",

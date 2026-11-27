@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { NativeAudio } from './web';
+import { NativeAudio } from './web.js';
 
 class MockAudioContext {
   destination = {};
