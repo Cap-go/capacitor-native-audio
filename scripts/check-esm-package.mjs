@@ -58,21 +58,30 @@ try {
     `check-esm-package: ${pkg.name}@${pkg.version} (${dom ? 'happy-dom' : 'bare node'}), node ${process.version}`,
   );
   // Bun only (repo rule: no npm/npx); Node is used just for the ESM loading checks.
-  run('bun', ['pm', 'pack', '--quiet', '--ignore-scripts', '--destination', work], root);
+  run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', work], root);
   const tgz = readdirSync(work).find((f) => f.endsWith('.tgz'));
   writeFileSync(join(work, 'package.json'), JSON.stringify({ name: 'esm-gate', private: true }) + '\n');
 
-  const deps = [join(work, tgz)];
+  // name@file: form, which every Bun version installs (older ones misread a bare .tgz path).
+  const deps = [`${pkg.name}@file:${join(work, tgz)}`];
   // All peers, optional ones too (e.g. firebase): the old CJS build required them eagerly,
   // so the export diff only works when both builds can load as a web consumer app would.
   for (const [name, range] of Object.entries(pkg.peerDependencies ?? {})) deps.push(`${name}@${range}`);
   if (dom) deps.push(HAPPY_DOM);
-  // Only the registry's own "404 Not Found" line means "never published"; any other lookup error fails the gate.
-  const published = run('bun', ['info', pkg.name, 'version'], work, { allowFail: true });
-  if (published.status !== 0 && !/^404 Not Found: /m.test(published.stderr)) {
-    throw new Error(`bun info ${pkg.name} failed, cannot diff exports:\n${published.stderr.trim()}`);
+  // Last release straight from the registry (works on every Bun version, no npm CLI).
+  // Only an HTTP 404 means "never published"; any other lookup error fails the gate.
+  const registry = (process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/?$/, '/');
+  const res = await fetch(`${registry}${pkg.name.replace('/', '%2f')}/latest`, {
+    signal: AbortSignal.timeout(Math.max(1, DEADLINE - Date.now())),
+  }).catch((err) => {
+    throw new Error(
+      `registry lookup for ${pkg.name} failed (${err.cause?.code ?? err.cause?.errors?.[0]?.code ?? err.message}), cannot diff exports`,
+    );
+  });
+  if (res.status !== 404 && !res.ok) {
+    throw new Error(`registry lookup for ${pkg.name} failed (HTTP ${res.status}), cannot diff exports`);
   }
-  const prevVersion = published.status === 0 ? published.stdout.trim() : null;
+  const prevVersion = res.status === 404 ? null : (await res.json()).version;
   if (prevVersion) deps.push(`${PREV}@npm:${pkg.name}@${prevVersion}`);
   run('bun', ['add', '--no-save', '--silent', ...deps], work);
 
